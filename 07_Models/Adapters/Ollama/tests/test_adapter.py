@@ -126,6 +126,16 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.request_id, model_request.request_id)
         self.assertEqual(result.structured_output, {"answer": "grounded"})
         self.assertEqual(result.usage.total_tokens, 16)
+        self.assertEqual(
+            result.raw_metadata["structured_output"],
+            {
+                "first_attempt_valid": True,
+                "repair_attempted": False,
+                "repair_succeeded": False,
+                "final_valid": True,
+                "attempt_count": 1,
+            },
+        )
         self.assertEqual(transport.calls[0]["url"], "http://127.0.0.1:11434/api/chat")
         payload = transport.calls[0]["payload"]
         self.assertFalse(payload["stream"])
@@ -149,6 +159,16 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
         result = await adapter.generate(request_for(structured=True))
 
         self.assertEqual(result.structured_output, {"answer": "grounded"})
+        self.assertEqual(
+            result.raw_metadata["structured_output"],
+            {
+                "first_attempt_valid": False,
+                "repair_attempted": True,
+                "repair_succeeded": True,
+                "final_valid": True,
+                "attempt_count": 2,
+            },
+        )
         self.assertEqual(len(transport.calls), 2)
         retry_messages = transport.calls[1]["payload"]["messages"]
         self.assertIn("previous response could not be used", retry_messages[-1]["content"])

@@ -80,16 +80,19 @@ class AgentRuntime:
         plan: TaskPlan | None = None
         response: AgentResponse | None = None
         evaluation = None
+        model_telemetry: list[dict[str, Any]] = []
 
         try:
-            plan, plan_usage = await self._create_plan(run_id, request, profile)
+            plan, plan_usage, plan_telemetry = await self._create_plan(run_id, request, profile)
             plan = self._apply_host_safety_steps(plan, request, profile)
             usage_parts.append(plan_usage)
+            if plan_telemetry is not None:
+                model_telemetry.append(plan_telemetry)
             plan, tool_requests, tool_results, decisions = await self._execute_plan(
                 plan, profile
             )
             evidence = self._evidence_from_results(tool_results)
-            answer_draft, answer_usage = await self._create_answer(
+            answer_draft, answer_usage, answer_telemetry = await self._create_answer(
                 run_id=run_id,
                 request=request,
                 profile=profile,
@@ -98,6 +101,8 @@ class AgentRuntime:
                 evidence=evidence,
             )
             usage_parts.append(answer_usage)
+            if answer_telemetry is not None:
+                model_telemetry.append(answer_telemetry)
             answer_text = self._augment_answer(answer_draft.answer, tool_results)
             citations, citation_errors = self._resolve_citations(
                 answer_draft.cited_evidence_ids, evidence
@@ -105,7 +110,7 @@ class AgentRuntime:
             errors.extend(citation_errors)
             model_critique = None
             if self._enable_model_critique:
-                model_critique, critique_usage = await self._create_critique(
+                model_critique, critique_usage, critique_telemetry = await self._create_critique(
                     run_id=run_id,
                     request=request,
                     profile=profile,
@@ -116,6 +121,8 @@ class AgentRuntime:
                 )
                 if critique_usage is not None:
                     usage_parts.append(critique_usage)
+                if critique_telemetry is not None:
+                    model_telemetry.append(critique_telemetry)
 
             evaluation = self._evaluator.evaluate(
                 run_id=run_id,
@@ -156,6 +163,7 @@ class AgentRuntime:
                 started_clock=started_clock,
                 errors=errors,
                 usage=self._merge_usage(usage_parts),
+                model_telemetry=model_telemetry,
             )
             await self._store.save(record)
             return response
@@ -191,6 +199,7 @@ class AgentRuntime:
                 started_clock=started_clock,
                 errors=errors,
                 usage=self._merge_usage(usage_parts),
+                model_telemetry=model_telemetry,
             )
             try:
                 await self._store.save(record)
@@ -200,7 +209,7 @@ class AgentRuntime:
 
     async def _create_plan(
         self, run_id: UUID, request: AgentRequest, profile: AgentProfile
-    ) -> tuple[TaskPlan, ModelUsage]:
+    ) -> tuple[TaskPlan, ModelUsage, dict[str, Any] | None]:
         tool_definitions = [
             definition.model_dump(mode="json")
             for name, definition in self._tools.tools.items()
@@ -258,7 +267,11 @@ class AgentRuntime:
             )
             for step in proposed.steps
         ]
-        return TaskPlan(goal=request.goal, steps=normalized_steps), model_response.usage
+        return (
+            TaskPlan(goal=request.goal, steps=normalized_steps),
+            model_response.usage,
+            _model_telemetry("plan", model_response.raw_metadata),
+        )
 
     @staticmethod
     def _apply_host_safety_steps(
@@ -366,7 +379,7 @@ class AgentRuntime:
         plan: TaskPlan,
         tool_results: list[ToolResult],
         evidence: list[EvidenceReference],
-    ) -> tuple[AnswerDraft, ModelUsage]:
+    ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         model_request = ModelRequest(
             model=profile.model,
             messages=[
@@ -403,7 +416,11 @@ class AgentRuntime:
             raise ValueError("model response request_id mismatch")
         if model_response.structured_output is None:
             raise ValueError("answer model did not return structured output")
-        return AnswerDraft.model_validate(model_response.structured_output), model_response.usage
+        return (
+            AnswerDraft.model_validate(model_response.structured_output),
+            model_response.usage,
+            _model_telemetry("answer", model_response.raw_metadata),
+        )
 
     async def _create_critique(
         self,
@@ -415,7 +432,7 @@ class AgentRuntime:
         tool_results: list[ToolResult],
         evidence: list[EvidenceReference],
         answer: str,
-    ) -> tuple[ModelCritique, ModelUsage | None]:
+    ) -> tuple[ModelCritique, ModelUsage | None, dict[str, Any] | None]:
         model_request = ModelRequest(
             model=profile.model,
             messages=[
@@ -461,6 +478,7 @@ class AgentRuntime:
                     suggestions=draft.suggestions,
                 ),
                 model_response.usage,
+                _model_telemetry("critique", model_response.raw_metadata),
             )
         except Exception:
             return (
@@ -469,6 +487,7 @@ class AgentRuntime:
                     prompt_version="evaluation.v1",
                     error="Advisory model critique was unavailable.",
                 ),
+                None,
                 None,
             )
 
@@ -563,6 +582,7 @@ class AgentRuntime:
         started_clock: float,
         errors: list[ErrorDetail],
         usage: ModelUsage,
+        model_telemetry: list[dict[str, Any]],
     ) -> RunRecord:
         completed_at = datetime.now(UTC)
         profile_json = profile.model_dump(mode="json")
@@ -595,6 +615,7 @@ class AgentRuntime:
                     },
                 }
             ),
+            metadata={"model_telemetry": model_telemetry},
         )
 
     @staticmethod
@@ -644,3 +665,17 @@ def _looks_like_arithmetic(expression: str) -> bool:
         return False
     allowed = frozenset("0123456789.+-*/%() \t")
     return all(character in allowed for character in expression)
+
+
+def _model_telemetry(phase: str, raw_metadata: dict[str, Any]) -> dict[str, Any] | None:
+    structured = raw_metadata.get("structured_output")
+    if not isinstance(structured, dict):
+        return None
+    return {
+        "phase": phase,
+        "first_attempt_valid": bool(structured.get("first_attempt_valid", False)),
+        "repair_attempted": bool(structured.get("repair_attempted", False)),
+        "repair_succeeded": bool(structured.get("repair_succeeded", False)),
+        "final_valid": bool(structured.get("final_valid", False)),
+        "attempt_count": int(structured.get("attempt_count", 1)),
+    }

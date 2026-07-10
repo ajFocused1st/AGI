@@ -94,7 +94,15 @@ class OllamaAdapter(BaseModelAdapter):
         for validation_attempt in range(self._config.structured_output_retries + 1):
             response = await self._post_with_retries(payload)
             try:
-                return self._parse_success(request, response)
+                return self._parse_success(
+                    request,
+                    response,
+                    structured_output_telemetry=_structured_output_telemetry(
+                        request=request,
+                        validation_attempt=validation_attempt,
+                        final_valid=True,
+                    ),
+                )
             except OllamaResponseValidationError as exc:
                 structured_error = exc
                 if (
@@ -232,7 +240,12 @@ class OllamaAdapter(BaseModelAdapter):
         return OllamaHTTPError(response.status_code, detail)
 
     @staticmethod
-    def _parse_success(request: ModelRequest, response: HttpResponse) -> ModelResponse:
+    def _parse_success(
+        request: ModelRequest,
+        response: HttpResponse,
+        *,
+        structured_output_telemetry: dict[str, Any],
+    ) -> ModelResponse:
         try:
             decoded = _strict_json_loads(response.body.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError, ValueError) as exc:
@@ -279,6 +292,7 @@ class OllamaAdapter(BaseModelAdapter):
             }.items()
             if value is not None
         }
+        raw_metadata["structured_output"] = structured_output_telemetry
         return ModelResponse(
             request_id=request.request_id,
             model=envelope.model,
@@ -352,6 +366,29 @@ def _content_preview(content: str, *, limit: int = 500) -> str:
     if len(compact) <= limit:
         return compact
     return compact[: limit - 3] + "..."
+
+
+def _structured_output_telemetry(
+    *,
+    request: ModelRequest,
+    validation_attempt: int,
+    final_valid: bool,
+) -> dict[str, Any]:
+    if request.response_schema is None:
+        return {
+            "first_attempt_valid": True,
+            "repair_attempted": False,
+            "repair_succeeded": False,
+            "final_valid": True,
+            "attempt_count": 1,
+        }
+    return {
+        "first_attempt_valid": validation_attempt == 0 and final_valid,
+        "repair_attempted": validation_attempt > 0,
+        "repair_succeeded": validation_attempt > 0 and final_valid,
+        "final_valid": final_valid,
+        "attempt_count": validation_attempt + 1,
+    }
 
 
 def _strict_json_loads(value: str) -> Any:
