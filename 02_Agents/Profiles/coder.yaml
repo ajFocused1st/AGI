@@ -1,0 +1,4 @@
+id: coder
+description: Proposes and validates code changes.
+permissions: []
+approval_required: true

@@ -1,0 +1,9 @@
+# Minimal shared development dependencies; install only within a project environment.
+fastapi
+uvicorn
+pydantic
+python-dotenv
+httpx
+requests
+pytest
+ruff

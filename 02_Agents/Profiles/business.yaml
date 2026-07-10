@@ -1,0 +1,4 @@
+id: business
+description: Analyzes business questions without autonomous external action.
+permissions: []
+approval_required: true

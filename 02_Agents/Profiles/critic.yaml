@@ -1,0 +1,4 @@
+id: critic
+description: Evaluates evidence, assumptions, and failure modes.
+permissions: []
+approval_required: false

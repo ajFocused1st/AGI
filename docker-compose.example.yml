@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:REPLACE_WITH_PINNED_VERSION
+    environment:
+      POSTGRES_USER: REPLACE_ME
+      POSTGRES_PASSWORD: REPLACE_ME
+      POSTGRES_DB: REPLACE_ME
+    profiles: ["example"]
+  mongodb:
+    image: mongo:REPLACE_WITH_PINNED_VERSION
+    profiles: ["example"]
+  qdrant:
+    image: qdrant/qdrant:REPLACE_WITH_PINNED_VERSION
+    profiles: ["example"]
+  redis:
+    image: redis:REPLACE_WITH_PINNED_VERSION
+    profiles: ["example"]

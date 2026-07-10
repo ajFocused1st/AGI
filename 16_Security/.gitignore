@@ -1,0 +1,9 @@
+Secrets/
+*.key
+*.pem
+*.pfx
+*.env
+.env
+.env.*
+credentials.json
+tokens.json
