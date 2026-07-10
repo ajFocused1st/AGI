@@ -15,15 +15,20 @@ from agi_contracts import (
     AgentResponse,
     Citation,
     ErrorDetail,
+    EvaluationVerdict,
     EvidenceReference,
     ModelCritique,
     ModelMessage,
     ModelRequest,
     ModelUsage,
+    PermissionDecision,
+    PlanRequirementResult,
+    ResponseRequirementResult,
     RunRecord,
     RunStatus,
     StepStatus,
     TaskPlan,
+    TaskRequirements,
     TaskStep,
     ToolRequest,
     ToolResult,
@@ -32,6 +37,7 @@ from agi_evaluation import EvaluationExpectations, RuleBasedEvaluator
 
 from .drafts import AnswerDraft, CritiqueDraft, PlanDraft
 from .ports import ModelAdapter, ToolExecutor
+from .requirements import validate_plan_requirements, validate_response_requirements
 from .run_store import AtomicJsonRunStore
 
 
@@ -68,7 +74,9 @@ class AgentRuntime:
         *,
         expectations: EvaluationExpectations | None = None,
         known_unsupported_claims: list[str] | None = None,
+        requirements: TaskRequirements | None = None,
     ) -> AgentResponse:
+        requirements = requirements or TaskRequirements()
         run_id = uuid4()
         started_at = datetime.now(UTC)
         started_clock = perf_counter()
@@ -81,16 +89,63 @@ class AgentRuntime:
         response: AgentResponse | None = None
         evaluation = None
         model_telemetry: list[dict[str, Any]] = []
+        plan_requirement_result: PlanRequirementResult | None = None
+        response_requirement_result: ResponseRequirementResult | None = None
+        plan_requirement_results: list[PlanRequirementResult] = []
+        response_requirement_results: list[ResponseRequirementResult] = []
 
         try:
-            plan, plan_usage, plan_telemetry = await self._create_plan(run_id, request, profile)
-            plan = self._apply_host_safety_steps(plan, request, profile)
+            plan, plan_usage, plan_telemetry = await self._create_plan(
+                run_id, request, profile, requirements=requirements
+            )
             usage_parts.append(plan_usage)
             if plan_telemetry is not None:
                 model_telemetry.append(plan_telemetry)
-            plan, tool_requests, tool_results, decisions = await self._execute_plan(
+            plan = self._sanitize_plan(plan)
+            plan_requirement_result = validate_plan_requirements(
+                requirements, plan, self._tools.tools
+            )
+            plan_requirement_results.append(plan_requirement_result)
+            if not plan_requirement_result.valid:
+                blocked_requests, blocked_results, blocked_decisions = (
+                    self._blocked_plan_proposals(plan, plan_requirement_result)
+                )
+                tool_requests.extend(blocked_requests)
+                tool_results.extend(blocked_results)
+                decisions.extend(blocked_decisions)
+                plan, correction_usage, correction_telemetry = await self._create_plan(
+                    run_id,
+                    request,
+                    profile,
+                    requirements=requirements,
+                    correction=plan_requirement_result,
+                )
+                usage_parts.append(correction_usage)
+                if correction_telemetry is not None:
+                    model_telemetry.append(correction_telemetry)
+                plan = self._sanitize_plan(plan)
+                plan_requirement_result = validate_plan_requirements(
+                    requirements,
+                    plan,
+                    self._tools.tools,
+                    correction_attempted=True,
+                )
+                plan_requirement_results.append(plan_requirement_result)
+            if not plan_requirement_result.valid:
+                raise ValueError("corrected plan did not satisfy task requirements")
+            recorded_denials = {decision.tool_name for decision in decisions if not decision.allowed}
+            policy_requests, policy_results, policy_decisions = self._policy_denials(
+                set(requirements.forbidden_capabilities) - recorded_denials
+            )
+            tool_requests.extend(policy_requests)
+            tool_results.extend(policy_results)
+            decisions.extend(policy_decisions)
+            plan, executed_requests, executed_results, execution_decisions = await self._execute_plan(
                 plan, profile
             )
+            tool_requests.extend(executed_requests)
+            tool_results.extend(executed_results)
+            decisions.extend(execution_decisions)
             evidence = self._evidence_from_results(tool_results)
             answer_draft, answer_usage, answer_telemetry = await self._create_answer(
                 run_id=run_id,
@@ -99,6 +154,7 @@ class AgentRuntime:
                 plan=plan,
                 tool_results=tool_results,
                 evidence=evidence,
+                requirements=requirements,
             )
             usage_parts.append(answer_usage)
             if answer_telemetry is not None:
@@ -108,6 +164,70 @@ class AgentRuntime:
                 answer_draft.cited_evidence_ids, evidence
             )
             errors.extend(citation_errors)
+            preliminary_evaluation = self._evaluator.evaluate(
+                run_id=run_id,
+                request=request,
+                plan=plan,
+                answer=answer_text,
+                evidence=evidence,
+                citations=citations,
+                tool_requests=tool_requests,
+                tool_results=tool_results,
+                permission_decisions=decisions,
+                expectations=expectations,
+                unsupported_claims=known_unsupported_claims,
+            )
+            response_requirement_result = validate_response_requirements(
+                requirements,
+                answer=answer_text,
+                evidence=evidence,
+                citations=citations,
+                unsupported_claims=preliminary_evaluation.unsupported_claims,
+            )
+            response_requirement_results.append(response_requirement_result)
+            if not response_requirement_result.valid:
+                answer_draft, correction_usage, correction_telemetry = (
+                    await self._create_answer(
+                        run_id=run_id,
+                        request=request,
+                        profile=profile,
+                        plan=plan,
+                        tool_results=tool_results,
+                        evidence=evidence,
+                        requirements=requirements,
+                        correction=response_requirement_result,
+                    )
+                )
+                usage_parts.append(correction_usage)
+                if correction_telemetry is not None:
+                    model_telemetry.append(correction_telemetry)
+                answer_text = self._augment_answer(answer_draft.answer, tool_results)
+                citations, correction_errors = self._resolve_citations(
+                    answer_draft.cited_evidence_ids, evidence
+                )
+                errors.extend(correction_errors)
+                corrected_evaluation = self._evaluator.evaluate(
+                    run_id=run_id,
+                    request=request,
+                    plan=plan,
+                    answer=answer_text,
+                    evidence=evidence,
+                    citations=citations,
+                    tool_requests=tool_requests,
+                    tool_results=tool_results,
+                    permission_decisions=decisions,
+                    expectations=expectations,
+                    unsupported_claims=known_unsupported_claims,
+                )
+                response_requirement_result = validate_response_requirements(
+                    requirements,
+                    answer=answer_text,
+                    evidence=evidence,
+                    citations=citations,
+                    unsupported_claims=corrected_evaluation.unsupported_claims,
+                    correction_attempted=True,
+                )
+                response_requirement_results.append(response_requirement_result)
             model_critique = None
             if self._enable_model_critique:
                 model_critique, critique_usage, critique_telemetry = await self._create_critique(
@@ -138,6 +258,8 @@ class AgentRuntime:
                 unsupported_claims=known_unsupported_claims,
                 model_critique=model_critique,
             )
+            if response_requirement_result is not None and not response_requirement_result.valid:
+                evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
             response = AgentResponse(
                 request_id=request.request_id,
                 run_id=run_id,
@@ -164,6 +286,11 @@ class AgentRuntime:
                 errors=errors,
                 usage=self._merge_usage(usage_parts),
                 model_telemetry=model_telemetry,
+                requirements=requirements,
+                plan_requirement_result=plan_requirement_result,
+                response_requirement_result=response_requirement_result,
+                plan_requirement_results=plan_requirement_results,
+                response_requirement_results=response_requirement_results,
             )
             await self._store.save(record)
             return response
@@ -200,6 +327,11 @@ class AgentRuntime:
                 errors=errors,
                 usage=self._merge_usage(usage_parts),
                 model_telemetry=model_telemetry,
+                requirements=requirements,
+                plan_requirement_result=plan_requirement_result,
+                response_requirement_result=response_requirement_result,
+                plan_requirement_results=plan_requirement_results,
+                response_requirement_results=response_requirement_results,
             )
             try:
                 await self._store.save(record)
@@ -208,7 +340,13 @@ class AgentRuntime:
             raise RuntimeExecutionError(run_id) from exc
 
     async def _create_plan(
-        self, run_id: UUID, request: AgentRequest, profile: AgentProfile
+        self,
+        run_id: UUID,
+        request: AgentRequest,
+        profile: AgentProfile,
+        *,
+        requirements: TaskRequirements,
+        correction: PlanRequirementResult | None = None,
     ) -> tuple[TaskPlan, ModelUsage, dict[str, Any] | None]:
         tool_definitions = [
             definition.model_dump(mode="json")
@@ -228,7 +366,8 @@ class AgentRuntime:
                         "Use read_only_file_search only when the goal requires facts from available local "
                         "documents, with a plain natural-language query. Use calculator only for concrete "
                         "arithmetic expressions such as '37 * 14'; never use assignments, variables, "
-                        "estimates, placeholders, or invented measurements."
+                        "estimates, placeholders, or invented measurements. "
+                        "Satisfy the supplied public task requirements."
                     ),
                 ),
                 ModelMessage(
@@ -239,6 +378,21 @@ class AgentRuntime:
                             "available_tools": tool_definitions,
                             "max_steps": profile.max_steps,
                             "max_tool_calls": profile.max_tool_calls,
+                            "task_requirements": requirements.model_dump(mode="json"),
+                            "correction": (
+                                {
+                                    "missing_capabilities": correction.missing_capabilities,
+                                    "forbidden_capabilities_proposed": (
+                                        correction.forbidden_capabilities_proposed
+                                    ),
+                                    "unknown_capabilities_proposed": (
+                                        correction.unknown_capabilities_proposed
+                                    ),
+                                    "validation_messages": correction.validation_messages,
+                                }
+                                if correction is not None
+                                else None
+                            ),
                         },
                         ensure_ascii=False,
                     ),
@@ -247,7 +401,10 @@ class AgentRuntime:
             response_schema=PlanDraft.model_json_schema(),
             temperature=0,
             max_tokens=2048,
-            metadata={"phase": "plan", "run_id": str(run_id)},
+            metadata={
+                "phase": "plan_correction" if correction is not None else "plan",
+                "run_id": str(run_id),
+            },
         )
         model_response = await self._model.generate(model_request)
         if model_response.request_id != model_request.request_id:
@@ -270,71 +427,102 @@ class AgentRuntime:
         return (
             TaskPlan(goal=request.goal, steps=normalized_steps),
             model_response.usage,
-            _model_telemetry("plan", model_response.raw_metadata),
+            _model_telemetry(
+                "plan_correction" if correction is not None else "plan",
+                model_response.raw_metadata,
+            ),
         )
 
     @staticmethod
-    def _apply_host_safety_steps(
-        plan: TaskPlan,
-        request: AgentRequest,
-        profile: AgentProfile,
-    ) -> TaskPlan:
+    def _sanitize_plan(plan: TaskPlan) -> TaskPlan:
         steps = [
             _without_invalid_calculator(step)
             if step.tool_name == "calculator"
             else step
             for step in plan.steps
         ]
-        goal = request.goal.casefold()
-        tool_names = {step.tool_name for step in steps if step.tool_name is not None}
+        return plan.model_copy(update={"steps": steps})
 
-        if (
-            "summarize" in goal
-            and "document" in goal
-            and "read_only_file_search" in profile.allowed_tools
-            and "read_only_file_search" not in tool_names
-            and len(steps) < profile.max_steps
-        ):
-            steps.insert(
-                0,
-                TaskStep(
-                    description="Search approved local documents before summarization.",
-                    tool_name="read_only_file_search",
-                    tool_arguments={"query": "Project", "max_matches": 20},
-                    success_criteria="At least one local benchmark document match is available.",
-                ),
-            )
+    @staticmethod
+    def _blocked_plan_proposals(
+        plan: TaskPlan,
+        result: PlanRequirementResult,
+    ) -> tuple[list[ToolRequest], list[ToolResult], list[PermissionDecision]]:
+        """Create audit-only denial records without dispatching any tool."""
 
-        destructive_terms = (
-            "delete",
-            "remove the original",
-            "remove original",
-            "erase",
-            "destroy",
-            "wipe",
+        blocked = set(result.forbidden_capabilities_proposed) | set(
+            result.unknown_capabilities_proposed
         )
-        if (
-            any(term in goal for term in destructive_terms)
-            and not any(
-                step.tool_name
-                and step.tool_name
-                not in {"calculator", "read_only_file_search"}
-                for step in steps
+        requests: list[ToolRequest] = []
+        results: list[ToolResult] = []
+        decisions: list[PermissionDecision] = []
+        for step in plan.steps:
+            if step.tool_name not in blocked:
+                continue
+            request = ToolRequest(
+                tool_name=step.tool_name,
+                arguments=step.tool_arguments,
+                step_id=step.step_id,
             )
-            and len(steps) < profile.max_steps
-        ):
-            steps.append(
-                TaskStep(
-                    description="Deny unapproved destructive file operation.",
-                    tool_name="delete_file",
-                    tool_arguments={
-                        "reason": "The active agent profile has no file mutation tool.",
-                    },
-                    success_criteria="The deletion request is denied and recorded.",
+            now = datetime.now(UTC)
+            requests.append(request)
+            decisions.append(
+                PermissionDecision(
+                    request_id=request.request_id,
+                    tool_name=request.tool_name,
+                    allowed=False,
+                    reason="Plan requirement validation denied this capability proposal.",
                 )
             )
+            results.append(
+                ToolResult(
+                    request_id=request.request_id,
+                    tool_name=request.tool_name,
+                    success=False,
+                    error="tool request denied before dispatch",
+                    started_at=now,
+                    completed_at=now,
+                    duration_ms=0,
+                )
+            )
+        return requests, results, decisions
 
-        return plan.model_copy(update={"steps": steps})
+    @staticmethod
+    def _policy_denials(
+        capabilities: set[str],
+    ) -> tuple[list[ToolRequest], list[ToolResult], list[PermissionDecision]]:
+        """Persist explicit forbidden-capability policy events without dispatch."""
+
+        requests: list[ToolRequest] = []
+        results: list[ToolResult] = []
+        decisions: list[PermissionDecision] = []
+        for capability in sorted(capabilities):
+            request = ToolRequest(
+                tool_name=capability,
+                arguments={"policy_event": "explicit_forbidden_capability"},
+            )
+            now = datetime.now(UTC)
+            requests.append(request)
+            decisions.append(
+                PermissionDecision(
+                    request_id=request.request_id,
+                    tool_name=capability,
+                    allowed=False,
+                    reason="The immutable task requirements forbid this capability.",
+                )
+            )
+            results.append(
+                ToolResult(
+                    request_id=request.request_id,
+                    tool_name=capability,
+                    success=False,
+                    error="tool request denied before dispatch",
+                    started_at=now,
+                    completed_at=now,
+                    duration_ms=0,
+                )
+            )
+        return requests, results, decisions
 
     async def _execute_plan(
         self, plan: TaskPlan, profile: AgentProfile
@@ -379,6 +567,8 @@ class AgentRuntime:
         plan: TaskPlan,
         tool_results: list[ToolResult],
         evidence: list[EvidenceReference],
+        requirements: TaskRequirements | None = None,
+        correction: ResponseRequirementResult | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         model_request = ModelRequest(
             model=profile.model,
@@ -401,6 +591,16 @@ class AgentRuntime:
                             "plan": plan.model_dump(mode="json"),
                             "tool_results": [item.model_dump(mode="json") for item in tool_results],
                             "evidence": [item.model_dump(mode="json") for item in evidence],
+                            "task_requirements": (
+                                requirements.model_dump(mode="json")
+                                if requirements is not None
+                                else None
+                            ),
+                            "missing_response_requirements": (
+                                correction.missing_requirements
+                                if correction is not None
+                                else []
+                            ),
                         },
                         ensure_ascii=False,
                     ),
@@ -409,7 +609,10 @@ class AgentRuntime:
             response_schema=AnswerDraft.model_json_schema(),
             temperature=0,
             max_tokens=4096,
-            metadata={"phase": "answer", "run_id": str(run_id)},
+            metadata={
+                "phase": "answer_correction" if correction is not None else "answer",
+                "run_id": str(run_id),
+            },
         )
         model_response = await self._model.generate(model_request)
         if model_response.request_id != model_request.request_id:
@@ -419,7 +622,10 @@ class AgentRuntime:
         return (
             AnswerDraft.model_validate(model_response.structured_output),
             model_response.usage,
-            _model_telemetry("answer", model_response.raw_metadata),
+            _model_telemetry(
+                "answer_correction" if correction is not None else "answer",
+                model_response.raw_metadata,
+            ),
         )
 
     async def _create_critique(
@@ -583,6 +789,11 @@ class AgentRuntime:
         errors: list[ErrorDetail],
         usage: ModelUsage,
         model_telemetry: list[dict[str, Any]],
+        requirements: TaskRequirements,
+        plan_requirement_result: PlanRequirementResult | None,
+        response_requirement_result: ResponseRequirementResult | None,
+        plan_requirement_results: list[PlanRequirementResult],
+        response_requirement_results: list[ResponseRequirementResult],
     ) -> RunRecord:
         completed_at = datetime.now(UTC)
         profile_json = profile.model_dump(mode="json")
@@ -594,6 +805,11 @@ class AgentRuntime:
             model_id=profile.model,
             model_parameters={"temperature": 0, "model_critique": self._enable_model_critique},
             plan=plan,
+            task_requirements=requirements,
+            plan_requirement_result=plan_requirement_result,
+            plan_requirement_results=plan_requirement_results,
+            response_requirement_result=response_requirement_result,
+            response_requirement_results=response_requirement_results,
             permission_decisions=decisions,
             tool_requests=tool_requests,
             tool_results=tool_results,

@@ -264,6 +264,80 @@ class TaskPlan(ContractModel):
         return self
 
 
+class TaskRequirements(ContractModel):
+    """Immutable host-owned requirements for one task execution."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        protected_namespaces=(),
+        str_strip_whitespace=True,
+        validate_default=True,
+        frozen=True,
+    )
+
+    required_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
+    requires_grounding: bool = False
+    requires_citations: bool = False
+    minimum_citation_count: int = Field(default=0, ge=0, le=512)
+    requires_uncertainty_statement: bool = False
+    allowed_capabilities: list[Identifier] | None = Field(default=None, max_length=128)
+    forbidden_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
+    maximum_tool_calls: int | None = Field(default=None, ge=0, le=100)
+    requirement_policy_version: Identifier = "task-requirements.v1"
+
+    @model_validator(mode="after")
+    def validate_capability_policy(self) -> Self:
+        collections = (
+            self.required_capabilities,
+            self.allowed_capabilities or [],
+            self.forbidden_capabilities,
+        )
+        if any(len(values) != len(set(values)) for values in collections):
+            raise ValueError("capability lists must contain unique names")
+        conflict = set(self.required_capabilities) & set(self.forbidden_capabilities)
+        if conflict:
+            raise ValueError(
+                "capabilities cannot be both required and forbidden: "
+                + ", ".join(sorted(conflict))
+            )
+        if self.requires_citations and self.minimum_citation_count < 1:
+            raise ValueError(
+                "requires_citations=true requires minimum_citation_count >= 1"
+            )
+        return self
+
+
+class PlanRequirementResult(ContractModel):
+    valid: bool
+    required_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
+    proposed_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
+    missing_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
+    forbidden_capabilities_proposed: list[Identifier] = Field(
+        default_factory=list, max_length=128
+    )
+    unknown_capabilities_proposed: list[Identifier] = Field(
+        default_factory=list, max_length=128
+    )
+    correction_attempted: bool = False
+    correction_succeeded: bool = False
+    validation_messages: list[ShortText] = Field(default_factory=list, max_length=256)
+
+
+class ResponseRequirementResult(ContractModel):
+    valid: bool
+    citations_required: bool
+    citation_count: int = Field(ge=0, le=512)
+    citation_requirement_satisfied: bool
+    grounding_required: bool
+    grounding_evidence_present: bool
+    uncertainty_required: bool
+    uncertainty_statement_present: bool
+    missing_requirements: list[Identifier] = Field(default_factory=list, max_length=128)
+    correction_attempted: bool = False
+    correction_succeeded: bool = False
+    validation_messages: list[ShortText] = Field(default_factory=list, max_length=256)
+
+
 class ToolDefinition(ContractModel):
     name: Identifier
     description: Description
@@ -396,6 +470,15 @@ class RunRecord(ContractModel):
     model_id: ModelId
     model_parameters: JsonObject = Field(default_factory=dict)
     plan: TaskPlan | None = None
+    task_requirements: TaskRequirements | None = None
+    plan_requirement_result: PlanRequirementResult | None = None
+    plan_requirement_results: list[PlanRequirementResult] = Field(
+        default_factory=list, max_length=2
+    )
+    response_requirement_result: ResponseRequirementResult | None = None
+    response_requirement_results: list[ResponseRequirementResult] = Field(
+        default_factory=list, max_length=2
+    )
     permission_decisions: list[PermissionDecision] = Field(
         default_factory=list, max_length=512
     )
@@ -446,10 +529,13 @@ __all__ = [
     "PermissionDecision",
     "RiskLevel",
     "RuleBasedCheck",
+    "PlanRequirementResult",
+    "ResponseRequirementResult",
     "RunRecord",
     "RunStatus",
     "StepStatus",
     "TaskPlan",
+    "TaskRequirements",
     "TaskStep",
     "ToolDefinition",
     "ToolRequest",

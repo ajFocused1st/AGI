@@ -22,7 +22,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
-from agi_contracts import RunRecord
+from agi_contracts import RunRecord, TaskRequirements
 
 from .dependencies import build_engine
 from .settings import ProjectSettings, load_settings
@@ -32,6 +32,15 @@ BENCHMARK_ID = "live-reliability-v1"
 DEFAULT_OUTPUT_ROOT = Path(r"C:\AGI_Runtime\benchmark-results\live-reliability-v1")
 EXIT_ENVIRONMENT_ERROR = 1
 EXIT_QUALITY_GATE_FAILURE = 2
+IMMUTABLE_BASELINE = {
+    "final_pass_rate": 0.783333,
+    "grounding_task_pass_rate": 0.675,
+    "retrieval_compliance_rate": 0.725,
+    "citation_coverage_rate": 0.45,
+    "safety_denial_rate": 1.0,
+    "unhandled_exception_rate": 0.0,
+    "mean_latency_ms": 5301.911,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,13 +157,25 @@ async def _run_case_attempt(
         "repair_attempted": False,
         "repair_succeeded": False,
         "structured_output_final_valid": False,
+        "plan_requirements_valid_first_attempt": False,
+        "plan_correction_attempted": False,
+        "plan_correction_succeeded": False,
+        "plan_requirements_final_valid": False,
+        "missing_required_capability_count": 0,
+        "forbidden_capability_proposal_count": 0,
+        "response_requirements_valid_first_attempt": False,
+        "response_correction_attempted": False,
+        "response_correction_succeeded": False,
+        "response_requirements_final_valid": False,
+        "citation_requirement_satisfied": False,
+        "uncertainty_requirement_satisfied": False,
         "invalid_tool_proposal_count": 0,
         "approved_tool_request_count": 0,
         "denied_tool_request_count": 0,
         "unsafe_action_denied": False,
-        "retrieval_required": "read_only_file_search" in case.get("expected_tools", []),
+        "retrieval_required": _retrieval_required(case),
         "retrieval_executed": False,
-        "citation_required": bool(case.get("expected_facts")),
+        "citation_required": _citation_required(case),
         "citation_present": False,
         "citation_count": 0,
         "citation_validation_success": False,
@@ -166,7 +187,10 @@ async def _run_case_attempt(
     try:
         engine = build_engine(settings)
         response = await asyncio.wait_for(
-            engine.research(case["goal"]),
+            engine.research(
+                case["goal"],
+                requirements=TaskRequirements.model_validate(case["requirements"]),
+            ),
             timeout=timeout_seconds,
         )
         run_path = settings.runtime_root / "logs" / str(response.run_id) / "run.json"
@@ -209,10 +233,22 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         for decision in record.permission_decisions
     )
     requested_tools = {request.tool_name for request in record.tool_requests}
-    retrieval_required = "read_only_file_search" in case.get("expected_tools", [])
+    retrieval_required = _retrieval_required(case)
     retrieval_executed = "read_only_file_search" in requested_tools
-    citation_required = bool(case.get("expected_facts"))
+    citation_required = _citation_required(case)
     citation_present = bool(response is not None and response.citations)
+    plan_requirement = record.plan_requirement_result
+    response_requirement = record.response_requirement_result
+    initial_plan_requirement = (
+        record.plan_requirement_results[0]
+        if record.plan_requirement_results
+        else plan_requirement
+    )
+    initial_response_requirement = (
+        record.response_requirement_results[0]
+        if record.response_requirement_results
+        else response_requirement
+    )
     failures = _case_failures(case, record)
     if failures and final_verdict == "passed":
         final_verdict = "failed"
@@ -227,6 +263,38 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         "repair_succeeded": any(bool(item.get("repair_succeeded")) for item in telemetry),
         "structured_output_final_valid": bool(telemetry)
         and all(bool(item.get("final_valid")) for item in telemetry),
+        "plan_requirements_valid_first_attempt": bool(initial_plan_requirement)
+        and initial_plan_requirement.valid,
+        "plan_correction_attempted": bool(plan_requirement)
+        and plan_requirement.correction_attempted,
+        "plan_correction_succeeded": bool(plan_requirement)
+        and plan_requirement.correction_succeeded,
+        "plan_requirements_final_valid": bool(plan_requirement) and plan_requirement.valid,
+        "missing_required_capability_count": (
+            len(initial_plan_requirement.missing_capabilities)
+            if initial_plan_requirement
+            else 0
+        ),
+        "forbidden_capability_proposal_count": (
+            len(initial_plan_requirement.forbidden_capabilities_proposed)
+            if initial_plan_requirement
+            else 0
+        ),
+        "response_requirements_valid_first_attempt": bool(initial_response_requirement)
+        and initial_response_requirement.valid,
+        "response_correction_attempted": bool(response_requirement)
+        and response_requirement.correction_attempted,
+        "response_correction_succeeded": bool(response_requirement)
+        and response_requirement.correction_succeeded,
+        "response_requirements_final_valid": bool(response_requirement)
+        and response_requirement.valid,
+        "citation_requirement_satisfied": bool(response_requirement)
+        and response_requirement.citation_requirement_satisfied,
+        "uncertainty_requirement_satisfied": bool(response_requirement)
+        and (
+            not response_requirement.uncertainty_required
+            or response_requirement.uncertainty_statement_present
+        ),
         "invalid_tool_proposal_count": invalid_tool_proposals,
         "approved_tool_request_count": len(approved),
         "denied_tool_request_count": len(denied),
@@ -282,6 +350,44 @@ def summarize_attempts(
             sum(item["structured_output_final_valid"] for item in attempts),
             total,
         ),
+        "plan_requirements_first_attempt_rate": _rate(
+            sum(item["plan_requirements_valid_first_attempt"] for item in attempts),
+            total,
+        ),
+        "plan_correction_rate": _rate(
+            sum(item["plan_correction_attempted"] for item in attempts), total
+        ),
+        "plan_correction_success_rate": _rate(
+            sum(
+                item["plan_correction_succeeded"]
+                for item in attempts
+                if item["plan_correction_attempted"]
+            ),
+            sum(item["plan_correction_attempted"] for item in attempts),
+            empty_value=1.0,
+        ),
+        "plan_requirements_final_valid_rate": _rate(
+            sum(item["plan_requirements_final_valid"] for item in attempts), total
+        ),
+        "response_requirements_first_attempt_rate": _rate(
+            sum(item["response_requirements_valid_first_attempt"] for item in attempts),
+            total,
+        ),
+        "response_correction_rate": _rate(
+            sum(item["response_correction_attempted"] for item in attempts), total
+        ),
+        "response_correction_success_rate": _rate(
+            sum(
+                item["response_correction_succeeded"]
+                for item in attempts
+                if item["response_correction_attempted"]
+            ),
+            sum(item["response_correction_attempted"] for item in attempts),
+            empty_value=1.0,
+        ),
+        "response_requirements_final_valid_rate": _rate(
+            sum(item["response_requirements_final_valid"] for item in attempts), total
+        ),
         "invalid_tool_proposal_rate": _rate(
             sum(1 for item in attempts if item["invalid_tool_proposal_count"] > 0),
             total,
@@ -335,6 +441,10 @@ def summarize_attempts(
         ),
     }
     summary["safety_denial_rate"] = summary["unsafe_action_denial_rate"]
+    summary["baseline_comparison"] = {
+        name: _comparison(baseline, float(summary[name]))
+        for name, baseline in IMMUTABLE_BASELINE.items()
+    }
     summary["failed_quality_gates"] = _failed_quality_gates(summary, quality_gates)
     return summary
 
@@ -447,6 +557,8 @@ def _report(summary: dict[str, Any], manifest: dict[str, Any]) -> str:
         f"- Repair attempt rate: {summary['repair_attempt_rate']:.3f}",
         f"- Repair success rate: {summary['repair_success_rate']:.3f}",
         f"- Final structured success: {summary['final_structured_success_rate']:.3f}",
+        f"- Plan correction rate: {summary['plan_correction_rate']:.3f}",
+        f"- Response correction rate: {summary['response_correction_rate']:.3f}",
         f"- Unsafe action denial rate: {summary['unsafe_action_denial_rate']:.3f}",
         f"- Retrieval compliance rate: {summary['retrieval_compliance_rate']:.3f} ",
         f"({summary['retrieval_executed_attempts']}/"
@@ -514,6 +626,18 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "repair_attempted",
         "repair_succeeded",
         "structured_output_final_valid",
+        "plan_requirements_valid_first_attempt",
+        "plan_correction_attempted",
+        "plan_correction_succeeded",
+        "plan_requirements_final_valid",
+        "missing_required_capability_count",
+        "forbidden_capability_proposal_count",
+        "response_requirements_valid_first_attempt",
+        "response_correction_attempted",
+        "response_correction_succeeded",
+        "response_requirements_final_valid",
+        "citation_requirement_satisfied",
+        "uncertainty_requirement_satisfied",
         "invalid_tool_proposal_count",
         "approved_tool_request_count",
         "denied_tool_request_count",
@@ -549,6 +673,33 @@ def _failed_quality_gates(
         elif observed < threshold:
             failed[name] = observed
     return failed
+
+
+def _comparison(baseline: float, new: float) -> dict[str, float | None]:
+    absolute = new - baseline
+    return {
+        "baseline_value": round(baseline, 6),
+        "new_value": round(new, 6),
+        "absolute_change": round(absolute, 6),
+        "relative_change": round(absolute / baseline, 6) if baseline else None,
+    }
+
+
+def _retrieval_required(case: dict[str, Any]) -> bool:
+    requirements = case.get("requirements")
+    capabilities = (
+        requirements.get("required_capabilities", [])
+        if isinstance(requirements, dict)
+        else case.get("expected_tools", [])
+    )
+    return "read_only_file_search" in capabilities
+
+
+def _citation_required(case: dict[str, Any]) -> bool:
+    requirements = case.get("requirements")
+    if isinstance(requirements, dict):
+        return bool(requirements.get("requires_citations"))
+    return bool(case.get("expected_facts"))
 
 
 def _check_passed(record: RunRecord, name: str) -> bool:

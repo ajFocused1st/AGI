@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agi_agent_runtime import AgentRuntime, AtomicJsonRunStore
+from agi_agent_runtime import AgentRuntime, AtomicJsonRunStore, RuntimeExecutionError
 from agi_contracts import (
     AgentProfile,
     AgentRequest,
@@ -13,6 +13,7 @@ from agi_contracts import (
     ModelResponse,
     ModelUsage,
     RunRecord,
+    TaskRequirements,
 )
 from agi_evaluation import EvaluationExpectations, RuleBasedEvaluator
 from agi_tools import Calculator, ToolRegistry
@@ -37,6 +38,141 @@ class PhaseAdapter:
 
 
 class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_one_plan_correction_adds_required_capability_and_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            registry = ToolRegistry()
+            registry.register(Calculator())
+            adapter = PhaseAdapter(
+                {
+                    "plan": {"steps": [{"description": "Answer directly"}]},
+                    "plan_correction": {
+                        "steps": [
+                            {
+                                "description": "Calculate",
+                                "tool_name": "calculator",
+                                "tool_arguments": {"expression": "2 + 2"},
+                            }
+                        ]
+                    },
+                    "answer": {
+                        "answer": "The result is 4.",
+                        "cited_evidence_ids": [],
+                    },
+                }
+            )
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+                enable_model_critique=False,
+            )
+            profile = AgentProfile(
+                id="researcher",
+                description="Test",
+                model="scripted",
+                allowed_tools=["calculator"],
+                permissions=["calculator.execute"],
+            )
+            response = await runtime.run(
+                AgentRequest(goal="Calculate 2 + 2"),
+                profile,
+                requirements=TaskRequirements(required_capabilities=["calculator"]),
+            )
+            record = RunRecord.model_validate_json(
+                (Path(temporary) / "logs" / str(response.run_id) / "run.json").read_text()
+            )
+            self.assertTrue(record.plan_requirement_result.correction_attempted)
+            self.assertTrue(record.plan_requirement_result.correction_succeeded)
+            self.assertEqual(record.task_requirements.required_capabilities, ["calculator"])
+            self.assertEqual([r.metadata["phase"] for r in adapter.requests], ["plan", "plan_correction", "answer"])
+
+    async def test_plan_correction_is_bounded_and_failed_result_persists(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            registry = ToolRegistry()
+            registry.register(Calculator())
+            adapter = PhaseAdapter(
+                {
+                    "plan": {"steps": [{"description": "No tool"}]},
+                    "plan_correction": {"steps": [{"description": "Still no tool"}]},
+                }
+            )
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+                enable_model_critique=False,
+            )
+            profile = AgentProfile(
+                id="researcher",
+                description="Test",
+                model="scripted",
+                allowed_tools=["calculator"],
+                permissions=["calculator.execute"],
+            )
+            with self.assertRaises(RuntimeExecutionError) as caught:
+                await runtime.run(
+                    AgentRequest(goal="Calculate"),
+                    profile,
+                    requirements=TaskRequirements(required_capabilities=["calculator"]),
+                )
+            record = RunRecord.model_validate_json(
+                (Path(temporary) / "logs" / str(caught.exception.run_id) / "run.json").read_text()
+            )
+            self.assertFalse(record.plan_requirement_result.valid)
+            self.assertTrue(record.plan_requirement_result.correction_attempted)
+            self.assertEqual(len(adapter.requests), 2)
+
+    async def test_answer_correction_is_bounded_and_controls_verdict(self) -> None:
+        for corrected_answer, expected_valid in (
+            ("The value cannot be verified.", True),
+            ("The value is probably ten.", False),
+        ):
+            with self.subTest(expected_valid=expected_valid), tempfile.TemporaryDirectory() as temporary:
+                registry = ToolRegistry()
+                adapter = PhaseAdapter(
+                    {
+                        "plan": {"steps": [{"description": "Answer carefully"}]},
+                        "answer": {
+                            "answer": "The value is ten.",
+                            "cited_evidence_ids": [],
+                        },
+                        "answer_correction": {
+                            "answer": corrected_answer,
+                            "cited_evidence_ids": [],
+                        },
+                    }
+                )
+                runtime = AgentRuntime(
+                    model_adapter=adapter,
+                    tool_executor=registry,
+                    evaluator=RuleBasedEvaluator(),
+                    run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+                    enable_model_critique=False,
+                )
+                profile = AgentProfile(
+                    id="researcher", description="Test", model="scripted"
+                )
+                response = await runtime.run(
+                    AgentRequest(goal="Report an unknown value"),
+                    profile,
+                    requirements=TaskRequirements(requires_uncertainty_statement=True),
+                )
+                record = RunRecord.model_validate_json(
+                    (Path(temporary) / "logs" / str(response.run_id) / "run.json").read_text()
+                )
+                self.assertEqual(record.response_requirement_result.valid, expected_valid)
+                self.assertTrue(record.response_requirement_result.correction_attempted)
+                self.assertEqual(
+                    record.evaluation.verdict.value,
+                    "passed" if expected_valid else "failed",
+                )
+                self.assertEqual(
+                    [r.metadata["phase"] for r in adapter.requests],
+                    ["plan", "answer", "answer_correction"],
+                )
+
     async def test_calculator_loop_saves_round_trippable_record(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             registry = ToolRegistry()
@@ -158,6 +294,10 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
                             }
                         ],
                     },
+                    "plan_correction": {
+                        "goal": "Delete atlas.md",
+                        "steps": [{"description": "Report that deletion is unavailable"}],
+                    },
                     "answer": {
                         "answer": "I cannot perform the unapproved destructive action.",
                         "cited_evidence_ids": [],
@@ -187,6 +327,7 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 profile,
                 expectations=EvaluationExpectations(expect_denial=True),
                 known_unsupported_claims=[],
+                requirements=TaskRequirements(forbidden_capabilities=["delete_file"]),
             )
             record_path = Path(temporary) / "logs" / str(response.run_id) / "run.json"
             record = RunRecord.model_validate_json(record_path.read_text(encoding="utf-8"))
@@ -243,6 +384,7 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             response = await runtime.run(
                 AgentRequest(goal="Summarize documents and then delete the originals"),
                 profile,
+                requirements=TaskRequirements(forbidden_capabilities=["delete_file"]),
             )
 
             record_path = Path(temporary) / "logs" / str(response.run_id) / "run.json"
@@ -250,7 +392,7 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(record.tool_requests[0].tool_name, "delete_file")
             self.assertEqual(len(record.tool_requests), 1)
             self.assertFalse(record.permission_decisions[0].allowed)
-            self.assertIn("not registered", record.permission_decisions[0].reason)
+            self.assertIn("task requirements forbid", record.permission_decisions[0].reason)
             self.assertIn("Deletion was denied", record.response.answer)
 
     def test_store_rejects_source_workspace_location(self) -> None:

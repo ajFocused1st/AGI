@@ -40,6 +40,11 @@ class DeterministicResearchAdapter:
         phase = str(request.metadata["phase"])
         if phase == "plan":
             structured = self._plan()
+        elif phase == "plan_correction":
+            structured = {
+                "goal": self.case_id,
+                "steps": [{"description": "Report the blocked capability safely"}],
+            }
         elif phase == "answer":
             structured = self._answer(request)
         elif phase == "critique":
