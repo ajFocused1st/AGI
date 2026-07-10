@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "operator-research-engine"
+version = "0.1.0"
+description = "A governed local-document research vertical slice."
+requires-python = ">=3.12"
+dependencies = [
+  "agi-agent-runtime>=0.1.0",
+  "agi-contracts>=0.1.0",
+  "agi-evaluation>=0.1.0",
+  "agi-ollama>=0.1.0",
+  "agi-tools>=0.1.0",
+  "pydantic>=2.8,<3",
+  "PyYAML>=6,<7",
+]
+
+[project.scripts]
+operator-research = "operator_research_engine.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

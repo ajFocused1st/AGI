@@ -1,4 +1,19 @@
 id: researcher
-description: Researches with source attribution.
-permissions: []
-approval_required: true
+description: Researches local documents with source attribution and no mutation rights.
+model: local-default
+allowed_tools:
+  - calculator
+  - read_only_file_search
+permissions:
+  - calculator.execute
+  - filesystem.search.readonly
+allowed_document_roots:
+  - C:\AGI\10_Benchmarks\Datasets\operator_research_v1\documents
+max_steps: 8
+max_tool_calls: 8
+approval_policy:
+  default_requires_human_approval: false
+  tools_requiring_approval: []
+  risk_levels_requiring_approval:
+    - high
+    - critical

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agi-ollama"
+version = "0.1.0"
+description = "Loopback-only Ollama model adapter for the AGI workspace"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "AGI Workspace" }]
+dependencies = [
+    "agi-contracts>=0.1.0,<0.2.0",
+    "jsonschema>=4.23,<5",
+    "pydantic>=2.8,<3",
+]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["agi_ollama*"]
+
+[tool.setuptools.package-data]
+agi_ollama = ["py.typed"]

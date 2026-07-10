@@ -1,1 +1,2 @@
 benchmark_id,name,category,version,metric,dataset,status,last_run
+operator-research-v1,Operator Research Vertical Slice,agents,1.0.0,case_pass_rate,operator_research_v1,active,

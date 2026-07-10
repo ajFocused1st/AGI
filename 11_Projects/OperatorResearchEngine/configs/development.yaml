@@ -1,0 +1,12 @@
+environment: development
+runtime_root: C:\AGI_Runtime
+profile_path: C:\AGI\02_Agents\Profiles\researcher.yaml
+document_roots:
+  - C:\AGI\10_Benchmarks\Datasets\operator_research_v1\documents
+ollama:
+  base_url: http://127.0.0.1:11434
+  model: ""
+  timeout_seconds: 30
+  max_retries: 1
+  temperature: 0
+  max_tokens: 2048
