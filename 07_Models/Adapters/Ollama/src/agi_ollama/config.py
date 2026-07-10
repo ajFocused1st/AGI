@@ -22,6 +22,7 @@ class OllamaConfig(BaseModel):
     allowed_models: tuple[str, ...] = ()
     timeout_seconds: float = Field(default=30.0, ge=0.01, le=120.0)
     max_retries: int = Field(default=1, ge=0, le=3)
+    structured_output_retries: int = Field(default=1, ge=0, le=2)
     retry_backoff_seconds: float = Field(default=0.25, ge=0.0, le=5.0)
     max_tokens_per_request: int = Field(default=4096, ge=1, le=8192)
     max_prompt_characters: int = Field(default=200_000, ge=1, le=1_000_000)

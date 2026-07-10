@@ -91,9 +91,56 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             run_path = Path(temporary) / "logs" / str(response.run_id) / "run.json"
             record = RunRecord.model_validate_json(run_path.read_text(encoding="utf-8"))
             self.assertEqual(record.response.answer, response.answer)
+            self.assertNotEqual(record.plan.steps[0].step_id, "1")
             self.assertEqual(record.tool_results[0].output["value"], 518)
             self.assertEqual(record.evaluation.verdict.value, "passed")
             self.assertEqual(record.usage.total_tokens, 45)
+
+    async def test_runtime_assigns_plan_step_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            registry = ToolRegistry()
+            adapter = PhaseAdapter(
+                {
+                    "plan": {
+                        "goal": "Create a plan",
+                        "steps": [
+                            {
+                                "step_id": "1",
+                                "description": "Clarify the research question",
+                            }
+                        ],
+                    },
+                    "answer": {
+                        "answer": "The plan has one host-owned step.",
+                        "cited_evidence_ids": [],
+                        "insufficient_evidence": False,
+                    },
+                    "critique": {
+                        "critique": "The answer matches the simple plan.",
+                        "suggestions": [],
+                    },
+                }
+            )
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+            )
+            profile = AgentProfile(
+                id="researcher",
+                description="Test profile",
+                model="scripted",
+                allowed_tools=[],
+                permissions=[],
+            )
+
+            response = await runtime.run(AgentRequest(goal="Create a plan"), profile)
+
+            record_path = Path(temporary) / "logs" / str(response.run_id) / "run.json"
+            record = RunRecord.model_validate_json(record_path.read_text(encoding="utf-8"))
+            self.assertNotEqual(str(record.plan.steps[0].step_id), "1")
+            self.assertEqual(record.plan.steps[0].description, "Clarify the research question")
 
     async def test_unknown_destructive_tool_is_denied_and_logged(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -146,6 +193,65 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(record.permission_decisions[0].allowed)
             self.assertFalse(record.tool_results[0].success)
             self.assertIn("denied", record.tool_results[0].error)
+
+    async def test_goal_level_delete_request_is_denied_even_without_model_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            registry = ToolRegistry()
+            registry.register(Calculator())
+            adapter = PhaseAdapter(
+                {
+                    "plan": {
+                        "goal": "Summarize documents and delete originals",
+                        "steps": [
+                            {
+                                "description": "Summarize documents",
+                                "tool_name": "calculator",
+                                "tool_arguments": {
+                                    "expression": "Summarize the benchmark documents"
+                                },
+                            },
+                            {
+                                "description": "Delete originals",
+                            },
+                        ],
+                    },
+                    "answer": {
+                        "answer": "The documents were summarized.",
+                        "cited_evidence_ids": [],
+                        "insufficient_evidence": False,
+                    },
+                    "critique": {
+                        "critique": "The destructive request was denied by the host.",
+                        "suggestions": [],
+                    },
+                }
+            )
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+            )
+            profile = AgentProfile(
+                id="researcher",
+                description="Test profile",
+                model="scripted",
+                allowed_tools=["calculator"],
+                permissions=["calculator.execute"],
+            )
+
+            response = await runtime.run(
+                AgentRequest(goal="Summarize documents and then delete the originals"),
+                profile,
+            )
+
+            record_path = Path(temporary) / "logs" / str(response.run_id) / "run.json"
+            record = RunRecord.model_validate_json(record_path.read_text(encoding="utf-8"))
+            self.assertEqual(record.tool_requests[0].tool_name, "delete_file")
+            self.assertEqual(len(record.tool_requests), 1)
+            self.assertFalse(record.permission_decisions[0].allowed)
+            self.assertIn("not registered", record.permission_decisions[0].reason)
+            self.assertIn("Deletion was denied", record.response.answer)
 
     def test_store_rejects_source_workspace_location(self) -> None:
         with self.assertRaises(ValueError):

@@ -132,10 +132,42 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["format"], model_request.response_schema)
         self.assertEqual(payload["options"]["num_predict"], 128)
         self.assertEqual(payload["options"]["seed"], 7)
+        self.assertIn("strict JSON parser", payload["messages"][0]["content"])
+
+    async def test_structured_output_retry_adds_corrective_instruction(self) -> None:
+        transport = FakeTransport(
+            [
+                response("Here is the answer: grounded"),
+                response('{"answer":"grounded"}'),
+            ]
+        )
+        adapter = OllamaAdapter(
+            config(structured_output_retries=1),
+            transport=transport,
+        )
+
+        result = await adapter.generate(request_for(structured=True))
+
+        self.assertEqual(result.structured_output, {"answer": "grounded"})
+        self.assertEqual(len(transport.calls), 2)
+        retry_messages = transport.calls[1]["payload"]["messages"]
+        self.assertIn("previous response could not be used", retry_messages[-1]["content"])
+
+    async def test_structured_output_error_includes_preview(self) -> None:
+        transport = FakeTransport([response("not json")])
+        adapter = OllamaAdapter(
+            config(structured_output_retries=0),
+            transport=transport,
+        )
+        with self.assertRaisesRegex(OllamaResponseValidationError, "preview='not json'"):
+            await adapter.generate(request_for(structured=True))
 
     async def test_schema_violation_is_rejected(self) -> None:
         transport = FakeTransport([response('{"wrong":"field"}')])
-        adapter = OllamaAdapter(config(), transport=transport)
+        adapter = OllamaAdapter(
+            config(structured_output_retries=0),
+            transport=transport,
+        )
         with self.assertRaises(OllamaResponseValidationError):
             await adapter.generate(request_for(structured=True))
 
@@ -154,7 +186,10 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
         transport = FakeTransport(
             [response('{"answer":"first","answer":"second"}')]
         )
-        adapter = OllamaAdapter(config(), transport=transport)
+        adapter = OllamaAdapter(
+            config(structured_output_retries=0),
+            transport=transport,
+        )
         with self.assertRaisesRegex(OllamaResponseValidationError, "strict JSON"):
             await adapter.generate(request_for(structured=True))
 

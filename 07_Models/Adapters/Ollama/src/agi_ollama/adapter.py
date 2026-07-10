@@ -89,6 +89,28 @@ class OllamaAdapter(BaseModelAdapter):
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
         payload = self._build_payload(request)
+        structured_error: OllamaResponseValidationError | None = None
+
+        for validation_attempt in range(self._config.structured_output_retries + 1):
+            response = await self._post_with_retries(payload)
+            try:
+                return self._parse_success(request, response)
+            except OllamaResponseValidationError as exc:
+                structured_error = exc
+                if (
+                    request.response_schema is None
+                    or validation_attempt >= self._config.structured_output_retries
+                ):
+                    raise
+                payload = self._build_payload(
+                    request,
+                    corrective_error=str(exc),
+                )
+
+        assert structured_error is not None
+        raise structured_error
+
+    async def _post_with_retries(self, payload: Mapping[str, Any]) -> HttpResponse:
         last_error: OllamaAdapterError | None = None
 
         for attempt in range(self._config.max_retries + 1):
@@ -104,7 +126,7 @@ class OllamaAdapter(BaseModelAdapter):
                 )
                 if not 200 <= response.status_code < 300:
                     raise self._http_error(response)
-                return self._parse_success(request, response)
+                return response
             except asyncio.CancelledError:
                 raise
             except asyncio.TimeoutError as exc:
@@ -129,7 +151,12 @@ class OllamaAdapter(BaseModelAdapter):
 
         raise AssertionError("bounded retry loop ended unexpectedly")
 
-    def _build_payload(self, request: ModelRequest) -> dict[str, Any]:
+    def _build_payload(
+        self,
+        request: ModelRequest,
+        *,
+        corrective_error: str | None = None,
+    ) -> dict[str, Any]:
         model = request.model.strip()
         if not model:
             raise OllamaRequestError("Model name must not be blank")
@@ -158,15 +185,30 @@ class OllamaAdapter(BaseModelAdapter):
         if request.seed is not None:
             options["seed"] = request.seed
 
+        messages = [
+            {
+                "role": str(getattr(message.role, "value", message.role)),
+                "content": message.content,
+            }
+            for message in request.messages
+        ]
+        if request.response_schema is not None:
+            messages.insert(0, _json_mode_instruction(request.response_schema))
+            if corrective_error is not None:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Your previous response could not be used by the host: "
+                            f"{corrective_error}. Return only one schema-valid JSON "
+                            "object now. No Markdown, no prose, no code fence."
+                        ),
+                    }
+                )
+
         payload: dict[str, Any] = {
             "model": model,
-            "messages": [
-                {
-                    "role": str(getattr(message.role, "value", message.role)),
-                    "content": message.content,
-                }
-                for message in request.messages
-            ],
+            "messages": messages,
             "stream": False,
             "options": options,
         }
@@ -256,7 +298,8 @@ def validate_structured_output(content: str, schema: Mapping[str, Any]) -> dict[
         parsed = _strict_json_loads(content)
     except (json.JSONDecodeError, RecursionError, ValueError) as exc:
         raise OllamaResponseValidationError(
-            "Model output was not strict JSON"
+            "Model output was not strict JSON; "
+            f"preview={_content_preview(content)!r}"
         ) from exc
     if not isinstance(parsed, dict):
         raise OllamaResponseValidationError(
@@ -285,6 +328,30 @@ def _schema_validator(schema: Mapping[str, Any]) -> Draft202012Validator:
     except SchemaError as exc:
         raise OllamaRequestError(f"Invalid response JSON Schema: {exc.message}") from exc
     return Draft202012Validator(schema)
+
+
+def _json_mode_instruction(schema: Mapping[str, Any]) -> dict[str, str]:
+    encoded_schema = json.dumps(
+        schema,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+    return {
+        "role": "system",
+        "content": (
+            "You are returning data to a strict JSON parser. Return exactly one JSON "
+            "object matching this JSON Schema. Do not include Markdown, prose, code "
+            f"fences, or comments. JSON Schema: {encoded_schema}"
+        ),
+    }
+
+
+def _content_preview(content: str, *, limit: int = 500) -> str:
+    compact = " ".join(content.strip().split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3] + "..."
 
 
 def _strict_json_loads(value: str) -> Any:
