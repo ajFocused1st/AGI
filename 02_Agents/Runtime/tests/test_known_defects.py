@@ -184,5 +184,21 @@ class DenialTimestampRegressionTests(unittest.TestCase):
                 self.assertLessEqual(decisions[0].decided_at, results[0].started_at)
 
 
+class ExceptionMessageRedactionTests(unittest.TestCase):
+    def test_messages_are_bounded_and_redacted(self) -> None:
+        from agi_agent_runtime.runtime import _safe_exception_message
+
+        message = _safe_exception_message(
+            ValueError(
+                "schema failed at tool_calls.0.purpose; Authorization: Bearer abc123secret "
+                "key=rpa_ABCDEFGHIJKLMNOP blob=" + "x" * 64 + " " + "y" * 400
+            )
+        )
+        self.assertIn("schema failed at tool_calls.0.purpose", message)
+        for leaked in ("abc123secret", "rpa_ABCDEFGHIJKLMNOP", "x" * 64):
+            self.assertNotIn(leaked, message)
+        self.assertLessEqual(len(message), 300)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -282,10 +282,15 @@ class OllamaAdapter(BaseModelAdapter):
 
         structured_output: dict[str, Any] | None = None
         if request.response_schema is not None:
-            structured_output = validate_structured_output(
+            structured_output, coercions = parse_structured_output(
                 envelope.message.content,
                 request.response_schema,
             )
+            if coercions:
+                structured_output_telemetry = {
+                    **structured_output_telemetry,
+                    "coercions": coercions[:32],
+                }
 
         input_tokens = envelope.prompt_eval_count
         output_tokens = envelope.eval_count
@@ -348,6 +353,107 @@ def validate_structured_output(content: str, schema: Mapping[str, Any]) -> dict[
             f"Structured model output failed schema validation at {path}: {exc.message}"
         ) from exc
     return parsed
+
+
+def parse_structured_output(
+    content: str, schema: Mapping[str, Any]
+) -> tuple[dict[str, Any], list[str]]:
+    """Parse, apply conservative schema-driven coercion, then validate strictly.
+
+    Local grammar-constrained decoding does not enforce ``additionalProperties: false``
+    or ``minLength``, so small models emit echoed prompt keys or ``""`` for optional
+    fields. Coercion only (a) drops keys where the schema forbids extra properties and
+    (b) maps ``""`` to ``null`` where the schema allows ``null``. It never invents values;
+    everything else must still pass the unchanged strict validator. Changes are returned
+    for telemetry.
+    """
+
+    try:
+        parsed = _strict_json_loads(content)
+    except (json.JSONDecodeError, RecursionError, ValueError):
+        return validate_structured_output(content, schema), []
+    if not isinstance(parsed, dict):
+        return validate_structured_output(content, schema), []
+    changes: list[str] = []
+    coerced = _coerce(parsed, schema, schema, "", changes)
+    if not changes:
+        return validate_structured_output(content, schema), []
+    encoded = json.dumps(coerced, ensure_ascii=False, allow_nan=False)
+    return validate_structured_output(encoded, schema), changes
+
+
+def _resolve(node: Mapping[str, Any], root: Mapping[str, Any]) -> Mapping[str, Any]:
+    reference = node.get("$ref")
+    if isinstance(reference, str) and reference.startswith("#/"):
+        target: Any = root
+        for part in reference[2:].split("/"):
+            target = target.get(part, {}) if isinstance(target, Mapping) else {}
+        return target if isinstance(target, Mapping) else node
+    return node
+
+
+def _allows_null(node: Mapping[str, Any], root: Mapping[str, Any]) -> bool:
+    node = _resolve(node, root)
+    if node.get("type") == "null" or (isinstance(node.get("type"), list) and "null" in node["type"]):
+        return True
+    return any(_allows_null(option, root) for option in node.get("anyOf", []) if isinstance(option, Mapping))
+
+
+def _object_branch(node: Mapping[str, Any], root: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    node = _resolve(node, root)
+    if node.get("type") == "object" or "properties" in node:
+        return node
+    for option in node.get("anyOf", []):
+        if isinstance(option, Mapping):
+            branch = _object_branch(option, root)
+            if branch is not None:
+                return branch
+    return None
+
+
+def _array_items(node: Mapping[str, Any], root: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    node = _resolve(node, root)
+    if node.get("type") == "array" and isinstance(node.get("items"), Mapping):
+        return node["items"]
+    for option in node.get("anyOf", []):
+        if isinstance(option, Mapping):
+            items = _array_items(option, root)
+            if items is not None:
+                return items
+    return None
+
+
+def _coerce(
+    value: Any,
+    node: Mapping[str, Any],
+    root: Mapping[str, Any],
+    path: str,
+    changes: list[str],
+) -> Any:
+    if value == "" and _allows_null(node, root):
+        changes.append(f"empty_to_null:{path or '<root>'}")
+        return None
+    if isinstance(value, dict):
+        branch = _object_branch(node, root)
+        if branch is None:
+            return value
+        properties = branch.get("properties", {})
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if key not in properties:
+                if branch.get("additionalProperties") is False:
+                    changes.append(f"dropped_key:{path + '.' if path else ''}{key[:40]}")
+                    continue
+                result[key] = item
+                continue
+            result[key] = _coerce(item, properties[key], root, f"{path + '.' if path else ''}{key}", changes)
+        return result
+    if isinstance(value, list):
+        items = _array_items(node, root)
+        if items is None:
+            return value
+        return [_coerce(item, items, root, f"{path}[{index}]", changes) for index, item in enumerate(value)]
+    return value
 
 
 def _schema_validator(schema: Mapping[str, Any]) -> Draft202012Validator:

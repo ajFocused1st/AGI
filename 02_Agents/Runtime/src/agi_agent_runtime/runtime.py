@@ -517,7 +517,10 @@ class AgentRuntime:
                 message="The run failed safely; inspect the stored error code and local logs.",
                 component="agent_runtime",
                 retryable=False,
-                details={"exception_type": type(exc).__name__},
+                details={
+                    "exception_type": type(exc).__name__,
+                    "exception_message": _safe_exception_message(exc),
+                },
             )
             errors.append(error)
             if response is None:
@@ -1408,6 +1411,30 @@ def _claim_text_from_evidence(evidence: EvidenceReference) -> str:
     return text[:16_384] or "Retrieved evidence is available."
 
 
+_SECRET_PATTERNS = (
+    re.compile(
+        r"(?i)\b(bearer|authorization|api[_-]?key|token|password|secret)(\s*[:=]?\s*)"
+        r"(?:(?:bearer|basic|token)\s+)?\S+"
+    ),
+    re.compile(r"\b(?:sk|rpa|pk)[-_][A-Za-z0-9_-]{8,}"),
+    re.compile(r"[A-Za-z0-9_\-+/=]{40,}"),
+)
+
+
+def _safe_exception_message(exc: BaseException, limit: int = 300) -> str:
+    """Bounded, secret-redacted exception text for the run record."""
+
+    message = " ".join(str(exc).split())
+    for pattern in _SECRET_PATTERNS:
+        message = pattern.sub(
+            lambda match: (match.group(1) + match.group(2) + "[REDACTED]")
+            if match.re is _SECRET_PATTERNS[0]
+            else "[REDACTED]",
+            message,
+        )
+    return message[:limit]
+
+
 def _sha256_json(value: Any) -> str:
     encoded = json.dumps(
         value,
@@ -1452,6 +1479,9 @@ def _model_telemetry(phase: str, raw_metadata: dict[str, Any]) -> dict[str, Any]
         "final_valid": bool(structured.get("final_valid", False)),
         "attempt_count": int(structured.get("attempt_count", 1)),
     }
+    coercions = structured.get("coercions")
+    if isinstance(coercions, list) and coercions:
+        telemetry["coercions"] = [str(item)[:96] for item in coercions[:32]]
     first_error = structured.get("first_error")
     if isinstance(first_error, dict):
         telemetry["first_error"] = {

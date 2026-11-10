@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Collection, Mapping
 
+from agi_evaluation import contains_uncertainty_statement
+
 from agi_contracts import (
     Citation,
     EvidenceReference,
@@ -136,19 +138,4 @@ def validate_response_requirements(
 
 
 def _contains_uncertainty_statement(answer: str) -> bool:
-    normalized = answer.casefold()
-    return any(
-        phrase in normalized
-        for phrase in (
-            "cannot be determined",
-            "cannot be verified",
-            "cannot verify",
-            "does not verify",
-            "not verifiable",
-            "not listed",
-            "insufficient evidence",
-            "insufficient information",
-            "no evidence",
-            "unknown",
-        )
-    )
+    return contains_uncertainty_statement(answer)

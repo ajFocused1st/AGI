@@ -25,6 +25,7 @@ from uuid import uuid4
 
 from agi_agent_runtime import RuntimeExecutionError
 from agi_contracts import RunRecord, TaskRequirements
+from agi_evaluation import contains_uncertainty_statement
 
 from .dependencies import build_engine
 from .settings import ProjectSettings, load_settings
@@ -99,7 +100,11 @@ async def run_live_benchmark(
         }
     )
     execution_id = f"{datetime.now(UTC).strftime('%Y-%m-%d_%H%M%S')}_{uuid4().hex[:8]}"
-    result_directory = options.output_root.expanduser().resolve() / execution_id
+    output_root = options.output_root.expanduser().resolve()
+    if output_root == DEFAULT_OUTPUT_ROOT.resolve():
+        # The default root is per benchmark; keep each definition's results separate.
+        output_root = output_root.parent / definition["benchmark_id"]
+    result_directory = output_root / execution_id
     result_directory.mkdir(parents=True, exist_ok=False)
 
     started_at = datetime.now(UTC)
@@ -690,10 +695,8 @@ def _case_failures(case: dict[str, Any], record: RunRecord) -> list[str]:
     for expected in case.get("expected_answer_contains", []):
         if expected.casefold() not in answer:
             failures.append(f"answer missing {expected!r}")
-    if case.get("expected_uncertainty"):
-        uncertainty_terms = ("cannot", "not verifiable", "not listed", "insufficient")
-        if not any(term in answer for term in uncertainty_terms):
-            failures.append("missing uncertainty statement")
+    if case.get("expected_uncertainty") and not contains_uncertainty_statement(answer):
+        failures.append("missing uncertainty statement")
     expected_tools = set(case.get("expected_tools", []))
     requested_tools = {request.tool_name for request in record.tool_requests}
     missing_tools = sorted(expected_tools.difference(requested_tools))

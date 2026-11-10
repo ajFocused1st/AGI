@@ -438,16 +438,52 @@ class RuleBasedEvaluator:
     ) -> tuple[float, str]:
         if not answer.strip() or len(answer) > 100_000:
             return 0.0, "The answer is empty or exceeds the usefulness bound."
-        if expectations.expect_uncertainty:
-            uncertainty_terms = (
-                "cannot determine",
-                "insufficient evidence",
-                "not available",
-                "not found",
-            )
-            if not any(term in answer.casefold() for term in uncertainty_terms):
-                return 0.0, "The answer does not acknowledge missing information."
+        if expectations.expect_uncertainty and not contains_uncertainty_statement(answer):
+            return 0.0, "The answer does not acknowledge missing information."
         return 1.0, "The response is bounded, direct, and handles required uncertainty."
+
+
+UNCERTAINTY_PHRASES = (
+    "cannot be determined",
+    "cannot determine",
+    "cannot be verified",
+    "cannot verify",
+    "can't be verified",
+    "could not be verified",
+    "could not determine",
+    "unable to verify",
+    "unable to determine",
+    "does not verify",
+    "do not verify",
+    "not verifiable",
+    "does not contain",
+    "do not contain",
+    "does not mention",
+    "do not mention",
+    "does not include",
+    "do not include",
+    "does not state",
+    "not listed",
+    "not mentioned",
+    "not specified",
+    "not stated",
+    "not provided",
+    "not available",
+    "not found",
+    "no evidence",
+    "no information",
+    "no mention",
+    "insufficient evidence",
+    "insufficient information",
+    "unknown",
+)
+
+
+def contains_uncertainty_statement(text: str) -> bool:
+    """The single shared definition of an explicit uncertainty statement."""
+
+    normalized = " ".join(text.casefold().replace("’", "'").split())
+    return any(phrase in normalized for phrase in UNCERTAINTY_PHRASES)
 
 
 def _numbers_in_text(value: str) -> set[Decimal]:
