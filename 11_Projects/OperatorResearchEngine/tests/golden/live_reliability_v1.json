@@ -5271,7 +5271,7 @@
      "content_sha256": "dc5f7ce1a6cc7bedd3447f9cdd080ccb72d5ddbf15af4a0d476a1749954b8480",
      "evidence_id": "<uuid-3>",
      "excerpt": "37 * 14 = 518",
-     "locator": "lines 1-1",
+     "locator": "computed result",
      "metadata": {
       "expression": "37 * 14",
       "retrieval_query": "37 * 14",
@@ -7631,13 +7631,13 @@
    "request_id": "<uuid-7>"
   },
   "response": {
-   "answer": "37 multiplied by 14 is 518. [tool:calculator (lines 1-1)]",
+   "answer": "37 multiplied by 14 is 518. [tool:calculator (computed result)]",
    "citations": [
     {
      "citation_id": "<uuid-8>",
      "claim": null,
      "evidence_id": "<uuid-3>",
-     "label": "tool:calculator (lines 1-1)"
+     "label": "tool:calculator (computed result)"
     }
    ],
    "completed_at": "<timestamp>",
@@ -7755,7 +7755,7 @@
      "content_sha256": "dc5f7ce1a6cc7bedd3447f9cdd080ccb72d5ddbf15af4a0d476a1749954b8480",
      "evidence_id": "<uuid-3>",
      "excerpt": "37 * 14 = 518",
-     "locator": "lines 1-1",
+     "locator": "computed result",
      "metadata": {
       "expression": "37 * 14",
       "retrieval_query": "37 * 14",

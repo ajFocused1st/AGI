@@ -464,6 +464,8 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 "requires_uncertainty_statement=true",
                 answer_request.messages[0].content,
             )
+            payload = json.loads(answer_request.messages[-1].content)
+            self.assertIs(payload["task_requirements"]["requires_uncertainty_statement"], True)
 
     async def test_failed_answer_correction_uses_evidence_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
