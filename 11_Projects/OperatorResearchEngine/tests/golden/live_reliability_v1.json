@@ -3687,11 +3687,11 @@
     },
     {
      "critical": false,
-     "details": "Evidence exists, but the response does not cite it.",
+     "details": "The answer only states missing information; nothing to cite.",
      "evidence_ids": [],
      "name": "factual_grounding",
-     "passed": false,
-     "score": 0.5,
+     "passed": true,
+     "score": 1.0,
      "weight": 0.25
     },
     {
@@ -3769,7 +3769,7 @@
    ],
    "run_id": "<uuid-1>",
    "scores": {
-    "factual_grounding": 0.5,
+    "factual_grounding": 1.0,
     "output_usefulness": 1.0,
     "plan_adherence": 1.0,
     "task_completion": 1.0,
@@ -4071,11 +4071,11 @@
      },
      {
       "critical": false,
-      "details": "Evidence exists, but the response does not cite it.",
+      "details": "The answer only states missing information; nothing to cite.",
       "evidence_ids": [],
       "name": "factual_grounding",
-      "passed": false,
-      "score": 0.5,
+      "passed": true,
+      "score": 1.0,
       "weight": 0.25
      },
      {
@@ -4153,7 +4153,7 @@
     ],
     "run_id": "<uuid-1>",
     "scores": {
-     "factual_grounding": 0.5,
+     "factual_grounding": 1.0,
      "output_usefulness": 1.0,
      "plan_adherence": 1.0,
      "task_completion": 1.0,
@@ -4454,11 +4454,11 @@
     },
     {
      "critical": false,
-     "details": "Evidence exists, but the response does not cite it.",
+     "details": "The answer only states missing information; nothing to cite.",
      "evidence_ids": [],
      "name": "factual_grounding",
-     "passed": false,
-     "score": 0.5,
+     "passed": true,
+     "score": 1.0,
      "weight": 0.25
     },
     {
@@ -4536,7 +4536,7 @@
    ],
    "run_id": "<uuid-1>",
    "scores": {
-    "factual_grounding": 0.5,
+    "factual_grounding": 1.0,
     "output_usefulness": 1.0,
     "plan_adherence": 1.0,
     "task_completion": 1.0,
@@ -4819,11 +4819,11 @@
      },
      {
       "critical": false,
-      "details": "Evidence exists, but the response does not cite it.",
+      "details": "The answer only states missing information; nothing to cite.",
       "evidence_ids": [],
       "name": "factual_grounding",
-      "passed": false,
-      "score": 0.5,
+      "passed": true,
+      "score": 1.0,
       "weight": 0.25
      },
      {
@@ -4901,7 +4901,7 @@
     ],
     "run_id": "<uuid-1>",
     "scores": {
-     "factual_grounding": 0.5,
+     "factual_grounding": 1.0,
      "output_usefulness": 1.0,
      "plan_adherence": 1.0,
      "task_completion": 1.0,

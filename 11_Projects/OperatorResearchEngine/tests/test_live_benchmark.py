@@ -64,6 +64,14 @@ class LiveBenchmarkTests(unittest.TestCase):
                 )
                 build_engine(settings)  # raises if profile roots and settings roots differ
 
+    def test_expected_dates_match_any_written_form(self) -> None:
+        from agi_evaluation import canonical_dates
+
+        # Real held-out case 04 answer from checkpoint B, failed by the literal check.
+        answer = canonical_dates("The Cedar Initiative began operations on September 3, 2024.").casefold()
+        self.assertIn(canonical_dates("2024-09-03"), answer)
+        self.assertNotIn(canonical_dates("2024-09-04"), answer)
+
     def test_model_authored_pass_rate_excludes_host_fallback(self) -> None:
         sources = ("model", "model_correction", "host_fallback", None)
         attempts = [{**_attempt("passed"), "answer_source": source} for source in sources]

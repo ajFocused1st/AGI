@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from agi_agent_runtime import RuntimeExecutionError
 from agi_contracts import RunRecord, TaskRequirements
-from agi_evaluation import contains_uncertainty_statement
+from agi_evaluation import canonical_dates, contains_uncertainty_statement
 
 from .dependencies import build_engine
 from .settings import ProjectSettings, load_settings
@@ -697,8 +697,10 @@ def _case_failures(case: dict[str, Any], record: RunRecord) -> list[str]:
     if response is None:
         return ["missing response"]
     answer = response.answer.casefold()
+    # Same date-aware matching as the evaluator: "September 3, 2024" satisfies "2024-09-03".
+    canonical_answer = canonical_dates(answer).casefold()
     for expected in case.get("expected_answer_contains", []):
-        if expected.casefold() not in answer:
+        if canonical_dates(expected).casefold() not in canonical_answer:
             failures.append(f"answer missing {expected!r}")
     if case.get("expected_uncertainty") and not contains_uncertainty_statement(answer):
         failures.append("missing uncertainty statement")

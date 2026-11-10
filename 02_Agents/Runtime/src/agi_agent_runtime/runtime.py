@@ -37,7 +37,11 @@ from agi_contracts import (
     ToolResult,
     ToolArgumentRepairHistory,
 )
-from agi_evaluation import EvaluationExpectations, RuleBasedEvaluator
+from agi_evaluation import (
+    EvaluationExpectations,
+    RuleBasedEvaluator,
+    contains_uncertainty_statement,
+)
 
 from .drafts import AnswerDraft, CritiqueDraft, PlanDraft, ToolCallDraft
 from .budgets import BudgetExceeded, BudgetGovernor
@@ -372,11 +376,15 @@ class AgentRuntime:
                 state.response_requirement_results[-1] = result
             else:
                 state.response_requirement_results.append(result)
+        factual_claims = [
+            claim
+            for claim in state.answer_draft.claims
+            if not contains_uncertainty_statement(claim.text)
+        ]
         state.answer_grounding_telemetry = {
-            "grounded_claim_count": len(state.answer_draft.claims),
-            "claims_with_evidence_count": sum(
-                bool(claim.evidence_ids) for claim in state.answer_draft.claims
-            ),
+            # Uncertainty statements are not factual claims.
+            "grounded_claim_count": len(factual_claims),
+            "claims_with_evidence_count": sum(bool(claim.evidence_ids) for claim in factual_claims),
             "unknown_evidence_reference_count": sum(
                 error.code == "invalid_citation" for error in state.errors
             ),
@@ -428,8 +436,13 @@ class AgentRuntime:
         )
         state.citations, citation_errors = self._resolve_citations(requested_ids, state.evidence)
         state.errors.extend(citation_errors)
+        # A claim that only states missing information is not a factual claim to cite.
         uncited_claims = (
-            [claim.text for claim in draft.claims if not claim.evidence_ids]
+            [
+                claim.text
+                for claim in draft.claims
+                if not claim.evidence_ids and not contains_uncertainty_statement(claim.text)
+            ]
             if state.requirements.requires_grounding
             else []
         )

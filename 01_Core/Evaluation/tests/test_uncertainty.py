@@ -63,5 +63,52 @@ class DateEquivalenceTests(unittest.TestCase):
         self.assertFalse(self._supported("Project Atlas launched on March 3, 2024.", excerpt))
 
 
+class GradingRegressionTests(DateEquivalenceTests):
+    """Step 9b: correct checkpoint-B answers must pass; wrong answers must still fail."""
+
+    CEDAR = [
+        "[C1] The Cedar Initiative began operations on 2024-09-03.",
+        "[C2] During its pilot, Cedar analyzed 240 specimens.",
+        "[C3] That pilot took 6 hours to finish.",
+        "[C4] Responsibility for the Cedar audit rests with Tomas Reyes.",
+    ]
+
+    def _supported_all(self, answer: str) -> bool:
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        evidence = [
+            EvidenceReference(evidence_id=uuid4(), source_id="d", source_path="cedar.md", excerpt=x)
+            for x in self.CEDAR
+        ]
+        supported, _ = RuleBasedEvaluator._document_claim_support(
+            answer=answer,
+            evidence=evidence,
+            citations=[Citation(evidence_id=item.evidence_id, label="c") for item in evidence],
+        )
+        return supported
+
+    def test_correct_paraphrased_answers_pass(self) -> None:
+        for answer in (
+            "The Cedar Initiative started operations on September 3rd, 2024. Its pilot phase "
+            "lasted for 6 hours and involved the analysis of 240 specimens.",
+            "# Summary of Local Documents\n\nThese documents describe the **Cedar Initiative**, "
+            "which began operations on September 3, 2024.",
+            "The available evidence does not contain the staffing level for Cedar.",
+        ):
+            self.assertTrue(self._supported_all(answer), answer)
+
+    def test_wrong_facts_still_fail(self) -> None:
+        for answer in (
+            "Cedar analyzed 999 specimens during its pilot.",
+            "The Cedar audit is led by Priya Natarajan.",
+            "The Cedar Initiative began operations on March 3, 2023.",
+            "The available evidence does not contain the budget. Cedar analyzed 999 specimens.",
+        ):
+            self.assertFalse(self._supported_all(answer), answer)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -295,6 +295,49 @@ class HostRequiredRetrievalTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("read_only_file_search", [request.tool_name for request in record.tool_requests])
 
 
+class UncertaintyClaimTests(unittest.IsolatedAsyncioTestCase):
+    async def test_uncited_uncertainty_claim_is_not_an_unsupported_claim(self) -> None:
+        from agi_contracts import RunRecord, TaskRequirements
+        from agi_tools import ReadOnlyFileSearch, ReadOnlyFileSearchConfig
+
+        uncertainty = "The available evidence does not contain the Kestrel pump budget."
+        answer = ScriptedReply(content="", structured_output={"claims": [{"text": uncertainty}]})
+        search = {"tool_name": "read_only_file_search", "arguments": {"query": "Kestrel pump budget"}}
+        with tempfile.TemporaryDirectory() as documents, tempfile.TemporaryDirectory() as logs:
+            Path(documents, "notes.md").write_text(
+                "# Kestrel Pump\n\n[K1] The Kestrel pump was serviced on 2024-06-01.\n", encoding="utf-8"
+            )
+            registry = ToolRegistry()
+            registry.register(
+                ReadOnlyFileSearch(
+                    ReadOnlyFileSearchConfig(roots=(SearchRoot(label="documents1", path=Path(documents)),))
+                )
+            )
+            adapter = ScriptedModelAdapter([_plan(search), answer])
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(logs) / "logs"),
+                enable_model_critique=False,
+            )
+            response = await runtime.run(
+                AgentRequest(goal="What is the Kestrel pump budget?", agent_profile_id="researcher"),
+                _profile(["read_only_file_search"], ["filesystem.search.readonly"], [documents]),
+                requirements=TaskRequirements(
+                    required_capabilities=["read_only_file_search"],
+                    requires_grounding=True,
+                    requires_uncertainty_statement=True,
+                ),
+            )
+            record = RunRecord.model_validate_json(
+                (Path(logs) / "logs" / str(response.run_id) / "run.json").read_text(encoding="utf-8")
+            )
+        self.assertTrue(record.response_requirement_result.valid)
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+        self.assertEqual([request.metadata["phase"] for request in adapter.requests], ["plan", "answer"])
+
+
 class DenialTimestampRegressionTests(unittest.TestCase):
     """Fixed in step 3: denial results could predate their decision (~0.1% of records)."""
 

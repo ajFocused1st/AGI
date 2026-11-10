@@ -272,6 +272,8 @@ class RuleBasedEvaluator:
             return 1.0, "Citations resolve to evidence captured during this run.", True
         if not evidence:
             return 1.0, "No documentary evidence was required for this response.", citation_integrity
+        if not _concrete_tokens(strip_uncertainty_sentences(answer)):
+            return 1.0, "The answer only states missing information; nothing to cite.", citation_integrity
         return 0.5, "Evidence exists, but the response does not cite it.", citation_integrity
 
     @staticmethod
@@ -338,8 +340,13 @@ class RuleBasedEvaluator:
         if not document_items:
             return True, "No document evidence was cited."
 
-        cited_text = _canonical_dates("\n".join(item.excerpt or "" for item in document_items))
-        answer_for_support = _canonical_dates(_strip_rendered_citations(answer))
+        cited_text = canonical_dates("\n".join(item.excerpt or "" for item in document_items))
+        answer_body = "\n".join(
+            line for line in answer.splitlines() if not line.lstrip().startswith("#")
+        )  # markdown headings are formatting, not claims
+        answer_for_support = canonical_dates(
+            strip_uncertainty_sentences(_strip_rendered_citations(answer_body))
+        )
         answer_tokens = _concrete_tokens(answer_for_support)
         if not answer_tokens:
             return True, "The answer contains no concrete claim tokens to check."
@@ -347,14 +354,18 @@ class RuleBasedEvaluator:
         cited_tokens = _concrete_tokens(cited_text)
         supported = sorted(answer_tokens & cited_tokens)
         minimum_overlap = min(len(answer_tokens), max(2, (len(answer_tokens) + 1) // 2))
-        missing_entities = sorted(
-            _titlecase_terms(answer_for_support) - _titlecase_terms(cited_text)
-        )
-        # Dates are high-risk facts: every date in the answer must appear in cited evidence,
-        # regardless of how many other words overlap.
+        cited_words = set(re.findall(r"[a-z0-9][a-z0-9_-]*", cited_text.casefold()))
+        missing_entities = sorted(_answer_entity_terms(answer_for_support) - cited_words)
+        # Dates and multi-digit numbers are high-risk facts: each must appear in cited
+        # evidence (documents or calculator results), however many other words overlap.
         unsupported_dates = sorted(
             set(_ISO_DATE.findall(answer_for_support)) - set(_ISO_DATE.findall(cited_text))
         )
+        all_cited_text = canonical_dates("\n".join(item.excerpt or "" for item in cited_evidence))
+        cited_numbers = _numbers_for_support(all_cited_text) | {
+            part for date in _ISO_DATE.findall(all_cited_text) for part in date.split("-")
+        }
+        unsupported_dates += sorted(_numbers_for_support(answer_for_support) - cited_numbers)
         if len(supported) < minimum_overlap or missing_entities or unsupported_dates:
             details = [
                 f"supported concrete terms: {len(supported)}/{len(answer_tokens)}",
@@ -362,7 +373,7 @@ class RuleBasedEvaluator:
             if missing_entities:
                 details.append("missing cited entities: " + ", ".join(missing_entities))
             if unsupported_dates:
-                details.append("uncited dates: " + ", ".join(unsupported_dates))
+                details.append("uncited dates or numbers: " + ", ".join(unsupported_dates))
             return False, "; ".join(details)
         return True, "Cited document evidence supports the answer's concrete terms."
 
@@ -542,17 +553,68 @@ _STOPWORDS = frozenset(
         "were",
         "who",
         "with",
+        # Common function words (standard stopword-list entries).
+        "also",
+        "been",
+        "but",
+        "has",
+        "had",
+        "have",
+        "its",
+        "than",
+        "that",
+        "their",
+        "then",
+        "there",
+        "these",
+        "this",
+        "those",
+        "which",
+        "while",
     }
 )
 
 
 def _concrete_tokens(value: str) -> set[str]:
+    """Content tokens; words are lightly stemmed so paraphrase ('analysis'/'analyzed')
+    matches, while dates and numbers stay exact."""
+
     tokens: set[str] = set()
     for match in re.finditer(r"[A-Za-z][A-Za-z0-9_-]{2,}|\d{4}-\d{2}-\d{2}|\d+", value):
         token = match.group(0).casefold()
-        if token not in _STOPWORDS:
-            tokens.add(token)
+        if token in _STOPWORDS:
+            continue
+        tokens.add(_stem(token) if token[0].isalpha() else token)
     return tokens
+
+
+_STEM_SUFFIXES = (
+    "ations", "ation", "ions", "ion", "ings", "ing", "ers", "er", "ies", "ied",
+    "ed", "es", "s", "e", "ysis", "yzed", "yze",
+)
+
+
+def _stem(term: str) -> str:
+    """Generic light suffix stripping (no word-specific rules)."""
+
+    for suffix in sorted(_STEM_SUFFIXES, key=len, reverse=True):
+        if len(term) > len(suffix) + 2 and term.endswith(suffix):
+            if suffix == "s" and term.endswith(("ss", "us", "is", "as")):
+                return term
+            if suffix in {"ies", "ied"}:
+                return term[: -len(suffix)] + "y"
+            return term[: -len(suffix)]
+    return term
+
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def strip_uncertainty_sentences(text: str) -> str:
+    """Drop explicit uncertainty sentences; they state an absence, not a factual claim."""
+
+    sentences = [part for part in _SENTENCE_SPLIT.split(text) if part.strip()]
+    return " ".join(part for part in sentences if not contains_uncertainty_statement(part))
 
 
 def _titlecase_terms(value: str) -> set[str]:
@@ -561,6 +623,22 @@ def _titlecase_terms(value: str) -> set[str]:
         term = match.group(0)
         if term.casefold() not in _STOPWORDS:
             terms.add(term.casefold())
+    return terms
+
+
+def _answer_entity_terms(value: str) -> set[str]:
+    """Capitalized names in the answer, excluding sentence-initial words and headings,
+    which are capitalized by grammar or formatting rather than because they are names."""
+
+    terms: set[str] = set()
+    for line in value.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        for sentence in re.split(r"(?<=[.!?:;])\s+", stripped.replace("*", "")):
+            words = sentence.lstrip("-•>0123456789.) ").split(maxsplit=1)
+            if len(words) == 2:
+                terms |= _titlecase_terms(words[1])
     return terms
 
 
@@ -587,9 +665,21 @@ _DAY_MONTH_YEAR = re.compile(
 
 
 _ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+_STANDALONE_NUMBER = re.compile(r"(?<![\w.,-])\d[\d,]*(?:\.\d+)?(?![\w-])")
 
 
-def _canonical_dates(value: str) -> str:
+def _numbers_for_support(text: str) -> set[str]:
+    """Multi-digit numbers outside dates (single digits are usually list markers)."""
+
+    numbers: set[str] = set()
+    for match in _STANDALONE_NUMBER.finditer(text):
+        value = match.group(0).replace(",", "").rstrip(".")
+        if len(value.replace(".", "")) >= 2:
+            numbers.add(value)
+    return numbers
+
+
+def canonical_dates(value: str) -> str:
     """Rewrite 'February 14, 2025' and '14 February 2025' as '2025-02-14'."""
 
     def iso(year: str, month: str, day: str) -> str:
