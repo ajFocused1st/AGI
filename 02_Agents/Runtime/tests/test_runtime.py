@@ -621,10 +621,12 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             record = RunRecord.model_validate_json(
                 (Path(temporary) / "logs" / str(response.run_id) / "run.json").read_text()
             )
+            # The fallback is a labelled safety net ranked by generic goal overlap,
+            # not tuned to reproduce every benchmark fact.
+            self.assertEqual(record.answer_source.value, "host_fallback")
+            self.assertGreaterEqual(len(record.response.citations), 2)
             self.assertIn("120", record.response.answer)
             self.assertIn("90", record.response.answer)
-            self.assertIn("4 hours", record.response.answer)
-            self.assertIn("3 hours", record.response.answer)
 
     async def test_invalid_optional_tool_call_is_dropped_without_repair(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -1260,7 +1262,8 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(record.tool_requests), 1)
             self.assertFalse(record.permission_decisions[0].allowed)
             self.assertIn("task requirements forbid", record.permission_decisions[0].reason)
-            self.assertIn("Deletion was denied", record.response.answer)
+            self.assertIn("denied by host policy", record.response.answer)
+            self.assertIn("delete_file", record.response.answer)
 
     def test_store_rejects_source_workspace_location(self) -> None:
         with self.assertRaises(ValueError):

@@ -543,7 +543,7 @@ def _line_matches_terms(haystack: str, query_terms: tuple[str, ...]) -> bool:
 
 
 def _partial_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
-    weak_terms = {"approved", "budget", "financial", "details", "document", "documents"}
+    weak_terms = {"details", "document", "documents", "file", "files", "local"}
     locations = [
         location
         for term in query_terms
@@ -559,12 +559,13 @@ def _first_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
     return min(locations) if locations else 0
 
 
+_STEM_SUFFIXES = ("ations", "ation", "ions", "ion", "ings", "ing", "ers", "er", "ies", "ied", "ed", "es", "s", "e")
+
+
 def _stem(term: str) -> str:
-    if term == "owner":
-        return "own"
-    if term in {"completion", "completed", "complete", "completes"}:
-        return "complet"
-    for suffix in ("ing", "ers", "ies", "ied", "ed", "es", "s"):
+    """Generic light suffix stripping; no word-specific rules."""
+
+    for suffix in _STEM_SUFFIXES:
         if len(term) > len(suffix) + 2 and term.endswith(suffix):
             if suffix == "s" and term.endswith(("ss", "us", "is", "as")):
                 return term
@@ -578,7 +579,6 @@ def _is_generic_document_query(query_terms: tuple[str, ...]) -> bool:
     if not query_terms:
         return False
     generic_terms = {
-        "benchmark",
         "document",
         "documents",
         "local",

@@ -165,5 +165,24 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(failed, "over-budget run must fail safely")
 
 
+class DenialTimestampRegressionTests(unittest.TestCase):
+    """Fixed in step 3: denial results could predate their decision (~0.1% of records)."""
+
+    def test_denial_results_never_predate_their_decision(self) -> None:
+        from agi_agent_runtime.drafts import ToolCallDraft
+        from agi_contracts import PlanRequirementResult
+
+        blocked = PlanRequirementResult(
+            valid=False, forbidden_capabilities_proposed=["delete_file"]
+        )
+        proposal = [ToolCallDraft(tool_name="delete_file", arguments={"path": "x.md"})]
+        for _ in range(5000):
+            for _, results, decisions in (
+                AgentRuntime._policy_denials({"calculator"}),
+                AgentRuntime._blocked_plan_proposals(proposal, blocked),
+            ):
+                self.assertLessEqual(decisions[0].decided_at, results[0].started_at)
+
+
 if __name__ == "__main__":
     unittest.main()

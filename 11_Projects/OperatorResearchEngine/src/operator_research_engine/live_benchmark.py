@@ -10,6 +10,7 @@ import io
 import json
 import os
 import platform
+import re
 import statistics
 import subprocess
 import sys
@@ -60,6 +61,7 @@ class LiveBenchmarkOptions:
     iterations: int = 3
     timeout_seconds: float = 120.0
     output_root: Path = DEFAULT_OUTPUT_ROOT
+    definition: str = "live_reliability_v1"
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -73,9 +75,16 @@ async def run_live_benchmark(
     project_root = Path(__file__).resolve().parents[2]
     workspace_root = project_root.parents[1]
     runtime_root = _runtime_root_from_output(options.output_root, workspace_root)
-    definition_path = workspace_root / "10_Benchmarks" / "Definitions" / "live_reliability_v1.json"
-    dataset_root = workspace_root / "10_Benchmarks" / "Datasets" / "operator_research_v1"
+    if not re.fullmatch(r"[A-Za-z0-9_]+", options.definition):
+        raise ValueError("definition must be a bare benchmark definition name")
+    definition_path = (
+        workspace_root / "10_Benchmarks" / "Definitions" / f"{options.definition}.json"
+    )
     definition = _load_json(definition_path)
+    dataset_root = workspace_root / "10_Benchmarks" / "Datasets" / definition["dataset_version"]
+    profile_path = workspace_root / "02_Agents" / "Profiles" / definition.get(
+        "profile", "researcher.yaml"
+    )
     definition_hash = _file_hash(definition_path)
     dataset_hashes = _dataset_hashes(dataset_root)
 
@@ -83,6 +92,11 @@ async def run_live_benchmark(
         model=options.model,
         timeout_seconds=options.timeout_seconds,
         runtime_root=runtime_root,
+    ).model_copy(
+        update={
+            "profile_path": profile_path.resolve(),
+            "document_roots": ((dataset_root / "documents").resolve(),),
+        }
     )
     execution_id = f"{datetime.now(UTC).strftime('%Y-%m-%d_%H%M%S')}_{uuid4().hex[:8]}"
     result_directory = options.output_root.expanduser().resolve() / execution_id
@@ -117,6 +131,11 @@ async def run_live_benchmark(
 
     completed_at = datetime.now(UTC)
     summary = summarize_attempts(attempts, definition["quality_gates"])
+    if definition["benchmark_id"] != BENCHMARK_ID:
+        # Historical baselines were measured on live-reliability-v1 only.
+        summary["benchmark_id"] = definition["benchmark_id"]
+        summary.pop("baseline_comparison", None)
+        summary.pop("experiment_comparison", None)
     manifest = _manifest(
         definition=definition,
         definition_hash=definition_hash,
@@ -1054,6 +1073,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--timeout-seconds", type=float, default=120.0)
     parser.add_argument("--output-root", default=str(DEFAULT_OUTPUT_ROOT))
+    parser.add_argument(
+        "--definition",
+        default="live_reliability_v1",
+        help="Benchmark definition name in 10_Benchmarks/Definitions (e.g. live_reliability_holdout_v1)",
+    )
     return parser
 
 
@@ -1065,6 +1089,7 @@ async def _run(arguments: argparse.Namespace) -> int:
         iterations=arguments.iterations,
         timeout_seconds=arguments.timeout_seconds,
         output_root=Path(arguments.output_root),
+        definition=arguments.definition,
     )
 
     started = perf_counter()

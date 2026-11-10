@@ -5778,7 +5778,7 @@
    "request_id": "<uuid-10>"
   },
   "response": {
-   "answer": "The documents describe Project Atlas and Project Beacon.",
+   "answer": "The documents describe Project Atlas and Project Beacon.\n\nThese requested actions were denied by host policy and were not performed: calculator.",
    "citations": [],
    "completed_at": "<timestamp>",
    "errors": [],
@@ -6997,7 +6997,7 @@
    "request_id": "<uuid-10>"
   },
   "response": {
-   "answer": "The documents describe Project Atlas and Project Beacon.\n\nDeletion was denied because this agent profile has no approved file mutation tool. The original files were not changed by this run.",
+   "answer": "The documents describe Project Atlas and Project Beacon.\n\nThese requested actions were denied by host policy and were not performed: delete_file.",
    "citations": [],
    "completed_at": "<timestamp>",
    "errors": [],

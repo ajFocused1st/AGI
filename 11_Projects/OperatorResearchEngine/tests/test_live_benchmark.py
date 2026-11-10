@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -39,6 +40,30 @@ from operator_research_engine.live_benchmark import (
 
 
 class LiveBenchmarkTests(unittest.TestCase):
+    def test_every_definition_builds_an_engine_with_matching_roots(self) -> None:
+        from operator_research_engine.dependencies import build_engine
+        from operator_research_engine.live_benchmark import _settings_for_live_run
+
+        workspace = Path(__file__).resolve().parents[3]
+        for name in ("live_reliability_v1", "live_reliability_holdout_v1"):
+            definition = json.loads(
+                (workspace / "10_Benchmarks" / "Definitions" / f"{name}.json").read_text(encoding="utf-8")
+            )
+            dataset = workspace / "10_Benchmarks" / "Datasets" / definition["dataset_version"]
+            with tempfile.TemporaryDirectory() as temporary:
+                settings = _settings_for_live_run(
+                    model="offline-check", timeout_seconds=5.0, runtime_root=Path(temporary)
+                ).model_copy(
+                    update={
+                        "model_provider": "ollama",
+                        "profile_path": (
+                            workspace / "02_Agents" / "Profiles" / definition.get("profile", "researcher.yaml")
+                        ).resolve(),
+                        "document_roots": ((dataset / "documents").resolve(),),
+                    }
+                )
+                build_engine(settings)  # raises if profile roots and settings roots differ
+
     def test_model_authored_pass_rate_excludes_host_fallback(self) -> None:
         sources = ("model", "model_correction", "host_fallback", None)
         attempts = [{**_attempt("passed"), "answer_source": source} for source in sources]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -689,16 +690,16 @@ class AgentRuntime:
                 tool_name=proposal.tool_name,
                 arguments=proposal.arguments,
             )
-            now = datetime.now(UTC)
             requests.append(request)
-            decisions.append(
-                PermissionDecision(
-                    request_id=request.request_id,
-                    tool_name=request.tool_name,
-                    allowed=False,
-                    reason="Plan requirement validation denied this capability proposal.",
-                )
+            decision = PermissionDecision(
+                request_id=request.request_id,
+                tool_name=request.tool_name,
+                allowed=False,
+                reason="Plan requirement validation denied this capability proposal.",
             )
+            # The result must never predate its decision (permission_before_execution).
+            now = decision.decided_at
+            decisions.append(decision)
             results.append(
                 ToolResult(
                     request_id=request.request_id,
@@ -726,16 +727,16 @@ class AgentRuntime:
                 tool_name=capability,
                 arguments={"policy_event": "explicit_forbidden_capability"},
             )
-            now = datetime.now(UTC)
             requests.append(request)
-            decisions.append(
-                PermissionDecision(
-                    request_id=request.request_id,
-                    tool_name=capability,
-                    allowed=False,
-                    reason="The immutable task requirements forbid this capability.",
-                )
+            decision = PermissionDecision(
+                request_id=request.request_id,
+                tool_name=capability,
+                allowed=False,
+                reason="The immutable task requirements forbid this capability.",
             )
+            # The result must never predate its decision (permission_before_execution).
+            now = decision.decided_at
+            decisions.append(decision)
             results.append(
                 ToolResult(
                     request_id=request.request_id,
@@ -1159,19 +1160,22 @@ class AgentRuntime:
 
     @staticmethod
     def _augment_answer(answer: str, tool_results: list[ToolResult]) -> str:
-        denied_delete = any(
-            result.tool_name == "delete_file"
-            and not result.success
-            and result.error is not None
-            and "denied" in result.error.casefold()
-            for result in tool_results
+        denied = sorted(
+            {
+                result.tool_name
+                for result in tool_results
+                if not result.success
+                and result.error is not None
+                and "denied" in result.error.casefold()
+            }
         )
-        if not denied_delete or "denied" in answer.casefold():
+        if not denied or "denied" in answer.casefold():
             return answer
         return (
             answer.rstrip()
-            + "\n\nDeletion was denied because this agent profile has no approved "
-            "file mutation tool. The original files were not changed by this run."
+            + "\n\nThese requested actions were denied by host policy and were not performed: "
+            + ", ".join(denied)
+            + "."
         )
 
     @staticmethod
@@ -1353,48 +1357,50 @@ def _informative_evidence(evidence: list[EvidenceReference]) -> list[EvidenceRef
     return informative or evidence
 
 
+_FALLBACK_STOPWORDS = frozenset(
+    "a an and are as at be by did do does for from how in is it of on or the to "
+    "was were what when where which who why with using use only local documents "
+    "document cite source supporting".split()
+)
+
+
+def _goal_terms(goal: str) -> set[str]:
+    return {
+        term
+        for term in re.findall(r"[a-z0-9]+", goal.casefold())
+        if len(term) > 2 and term not in _FALLBACK_STOPWORDS
+    }
+
+
 def _select_fallback_evidence(
     *,
     goal: str,
     evidence: list[EvidenceReference],
     minimum_count: int,
 ) -> list[EvidenceReference]:
-    informative = _informative_evidence(evidence)
-    if "compare" not in goal.casefold():
-        return informative[:minimum_count]
+    """Pick distinct evidence ranked by plain lexical overlap with the goal (no domain terms)."""
 
-    selected: list[EvidenceReference] = []
-    seen_excerpts: set[str] = set()
-    wanted_terms = ("atlas", "beacon", "sample", "processed", "completed", "hour")
+    terms = _goal_terms(goal)
+
+    def overlap(item: EvidenceReference) -> int:
+        excerpt_terms = set(re.findall(r"[a-z0-9]+", (item.excerpt or "").casefold()))
+        return sum(
+            any(word.startswith(term[:5]) for word in excerpt_terms) for term in terms
+        )
+
     ranked = sorted(
-        informative,
-        key=lambda item: (
-            not _is_comparison_measurement(item),
-            not _has_benchmark_label(item),
-            (item.excerpt or "").casefold(),
-        ),
+        enumerate(_informative_evidence(evidence)),
+        key=lambda pair: (-overlap(pair[1]), pair[0]),
     )
-    for item in ranked:
-        excerpt = (item.excerpt or "").casefold()
-        normalized = " ".join(excerpt.split())
-        if normalized in seen_excerpts:
+    selected: list[EvidenceReference] = []
+    seen: set[str] = set()
+    for _, item in ranked:
+        normalized = " ".join((item.excerpt or "").casefold().split())
+        if normalized in seen:
             continue
-        if any(term in excerpt for term in wanted_terms):
-            selected.append(item)
-            seen_excerpts.add(normalized)
-        if len(selected) >= max(minimum_count, 6):
-            break
-    return selected[: max(minimum_count, 6)] or informative[:minimum_count]
-
-
-def _is_comparison_measurement(evidence: EvidenceReference) -> bool:
-    excerpt = (evidence.excerpt or "").casefold()
-    return any(term in excerpt for term in ("processed", "samples", "completed", "hours"))
-
-
-def _has_benchmark_label(evidence: EvidenceReference) -> bool:
-    excerpt = (evidence.excerpt or "").strip().casefold()
-    return excerpt.startswith(("[a", "[b"))
+        seen.add(normalized)
+        selected.append(item)
+    return selected[: max(minimum_count, 3)]
 
 
 def _claim_text_from_evidence(evidence: EvidenceReference) -> str:

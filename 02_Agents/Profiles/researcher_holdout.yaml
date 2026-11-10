@@ -1,0 +1,21 @@
+﻿id: researcher-holdout
+description: Researches local documents with source attribution and no mutation rights.
+model: local-default
+allowed_tools:
+  - calculator
+  - read_only_file_search
+  - read_only_file_reader
+permissions:
+  - calculator.execute
+  - filesystem.search.readonly
+  - filesystem.read.readonly
+allowed_document_roots:
+  - C:\AGI\10_Benchmarks\Datasets\operator_research_holdout_v1\documents
+max_steps: 8
+max_tool_calls: 8
+approval_policy:
+  default_requires_human_approval: false
+  tools_requiring_approval: []
+  risk_levels_requiring_approval:
+    - high
+    - critical

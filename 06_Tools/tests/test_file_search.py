@@ -139,7 +139,7 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_generic_benchmark_query_returns_bounded_document_lines(self) -> None:
-        _, result = await self.execute(self.make_tool(), "benchmark", max_matches=2)
+        _, result = await self.execute(self.make_tool(), "documents", max_matches=2)
 
         self.assertTrue(result.success)
         self.assertEqual(len(result.output["matches"]), 2)
