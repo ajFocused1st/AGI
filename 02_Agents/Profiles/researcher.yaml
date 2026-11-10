@@ -4,9 +4,11 @@ model: local-default
 allowed_tools:
   - calculator
   - read_only_file_search
+  - read_only_file_reader
 permissions:
   - calculator.execute
   - filesystem.search.readonly
+  - filesystem.read.readonly
 allowed_document_roots:
   - C:\AGI\10_Benchmarks\Datasets\operator_research_v1\documents
 max_steps: 8

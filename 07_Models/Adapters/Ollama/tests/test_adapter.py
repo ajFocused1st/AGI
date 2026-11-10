@@ -116,6 +116,22 @@ class OllamaConfigTests(unittest.TestCase):
 
 
 class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_context_and_thinking_preserve_plain_prompt(self) -> None:
+        transport = FakeTransport([response("42")])
+        adapter = OllamaAdapter(config(context_tokens=4096, think=False), transport=transport)
+        await adapter.generate(request_for())
+        payload = transport.calls[0]["payload"]
+        self.assertEqual(payload["options"]["num_ctx"], 4096)
+        self.assertIs(payload["think"], False)
+        self.assertNotIn("format", payload)
+        self.assertEqual(len(payload["messages"]), 1)
+
+    async def test_new_resource_settings_do_not_change_existing_defaults(self) -> None:
+        transport = FakeTransport([response("42")])
+        await OllamaAdapter(config(), transport=transport).generate(request_for())
+        self.assertNotIn("think", transport.calls[0]["payload"])
+        self.assertNotIn("num_ctx", transport.calls[0]["payload"]["options"])
+
     async def test_generates_and_validates_structured_output(self) -> None:
         transport = FakeTransport([response('{"answer":"grounded"}')])
         adapter = OllamaAdapter(config(), transport=transport)
@@ -167,11 +183,56 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
                 "repair_succeeded": True,
                 "final_valid": True,
                 "attempt_count": 2,
+                "first_error": {"category": "not_json"},
             },
         )
         self.assertEqual(len(transport.calls), 2)
         retry_messages = transport.calls[1]["payload"]["messages"]
         self.assertIn("previous response could not be used", retry_messages[-1]["content"])
+
+    async def test_structured_schema_grammar_error_falls_back_to_json_mode(self) -> None:
+        grammar_error = HttpResponse(
+            400,
+            b'{"error":{"message":"Failed to initialize samplers: failed to parse grammar"}}',
+            {},
+        )
+        transport = FakeTransport(
+            [
+                grammar_error,
+                response('{"answer":"grounded"}'),
+            ]
+        )
+        adapter = OllamaAdapter(config(max_retries=0), transport=transport)
+
+        result = await adapter.generate(request_for(structured=True))
+
+        self.assertEqual(result.structured_output, {"answer": "grounded"})
+        self.assertEqual(transport.calls[0]["payload"]["format"], request_for(structured=True).response_schema)
+        self.assertEqual(transport.calls[1]["payload"]["format"], "json")
+        self.assertTrue(result.raw_metadata["structured_output"]["schema_mode_fallback"])
+
+    async def test_schema_grammar_fallback_is_cached_per_adapter(self) -> None:
+        grammar_error = HttpResponse(
+            400,
+            b'{"error":"failed to parse grammar"}',
+            {},
+        )
+        transport = FakeTransport(
+            [
+                grammar_error,
+                response('{"answer":"first"}'),
+                response('{"answer":"second"}'),
+            ]
+        )
+        adapter = OllamaAdapter(config(max_retries=0), transport=transport)
+
+        await adapter.generate(request_for(structured=True))
+        second = await adapter.generate(request_for(structured=True))
+
+        self.assertEqual(second.structured_output, {"answer": "second"})
+        self.assertEqual(transport.calls[0]["payload"]["format"], request_for(structured=True).response_schema)
+        self.assertEqual(transport.calls[1]["payload"]["format"], "json")
+        self.assertEqual(transport.calls[2]["payload"]["format"], "json")
 
     async def test_structured_output_error_includes_preview(self) -> None:
         transport = FakeTransport([response("not json")])
@@ -190,6 +251,25 @@ class OllamaAdapterTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(OllamaResponseValidationError):
             await adapter.generate(request_for(structured=True))
+
+    async def test_structured_retry_records_schema_error_category(self) -> None:
+        transport = FakeTransport(
+            [
+                response('{"wrong":"field"}'),
+                response('{"answer":"grounded"}'),
+            ]
+        )
+        adapter = OllamaAdapter(
+            config(structured_output_retries=1),
+            transport=transport,
+        )
+
+        result = await adapter.generate(request_for(structured=True))
+
+        self.assertEqual(
+            result.raw_metadata["structured_output"]["first_error"],
+            {"category": "schema_validation", "path": "<root>"},
+        )
 
     async def test_external_schema_reference_is_rejected_before_transport(self) -> None:
         transport = FakeTransport([])

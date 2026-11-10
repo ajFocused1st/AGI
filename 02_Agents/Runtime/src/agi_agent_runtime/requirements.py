@@ -21,12 +21,15 @@ def validate_plan_requirements(
     available_tools: Mapping[str, ToolDefinition] | Collection[str],
     *,
     correction_attempted: bool = False,
+    proposed_capabilities: list[str] | None = None,
 ) -> PlanRequirementResult:
     """Validate proposals only; this function never authorizes or executes tools."""
 
     names = available_tools.keys() if isinstance(available_tools, Mapping) else available_tools
     canonical = {name.casefold(): name for name in names}
-    proposed_raw = [step.tool_name for step in plan.steps if step.tool_name is not None]
+    proposed_raw = proposed_capabilities or [
+        step.tool_name for step in plan.steps if step.tool_name is not None
+    ]
     proposed = [canonical.get(name.casefold(), name) for name in proposed_raw]
     proposed_unique = list(dict.fromkeys(proposed))
     known = set(canonical.values())
@@ -140,6 +143,7 @@ def _contains_uncertainty_statement(answer: str) -> bool:
             "cannot be determined",
             "cannot be verified",
             "cannot verify",
+            "does not verify",
             "not verifiable",
             "not listed",
             "insufficient evidence",

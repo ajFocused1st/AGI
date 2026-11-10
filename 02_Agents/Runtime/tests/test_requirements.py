@@ -127,10 +127,17 @@ class RequirementValidatorTests(unittest.TestCase):
             evidence=[],
             citations=[],
         )
+        equivalent = validate_response_requirements(
+            requirements,
+            answer="The available evidence does not verify the requested budget.",
+            evidence=[],
+            citations=[],
+        )
         missing = validate_response_requirements(
             requirements, answer="The value is probably ten.", evidence=[], citations=[]
         )
         self.assertTrue(present.valid)
+        self.assertTrue(equivalent.valid)
         self.assertFalse(missing.valid)
 
 

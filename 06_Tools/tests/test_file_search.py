@@ -24,7 +24,9 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.notes_bytes = (
-            "Project Atlas launched on 2025-02-14.\n" "Atlas processed 120 samples in four hours.\n"
+            "Project Atlas launched on 2025-02-14.\n"
+            "Atlas processed 120 samples in four hours.\n"
+            "Mina Chen owns the Project Atlas review.\n"
         ).encode()
         (self.root / "notes.md").write_bytes(self.notes_bytes)
         (self.root / "credentials.json").write_text(
@@ -43,6 +45,14 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         nested.mkdir()
         (nested / "comparison.txt").write_text(
             "Project Beacon processed 90 samples.\n",
+            encoding="utf-8",
+        )
+        (nested / "beacon.md").write_text(
+            "Imani Cole owns the Beacon review.\n",
+            encoding="utf-8",
+        )
+        (nested / "timing.md").write_text(
+            "The Beacon trial completed in 3 hours.\n",
             encoding="utf-8",
         )
 
@@ -93,6 +103,54 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
             {"notes.md"},
         )
         self.assertGreaterEqual(result.output["skipped_entries"], 3)
+
+    async def test_term_fallback_matches_inflected_fact_query(self) -> None:
+        _, result = await self.execute(self.make_tool(), "Project Atlas launch date")
+
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.output["matches"]), 1)
+        self.assertEqual(result.output["matches"][0]["snippet"], "Project Atlas launched on 2025-02-14.")
+
+    async def test_term_fallback_matches_owner_and_owns_variants(self) -> None:
+        _, result = await self.execute(self.make_tool(), "Who owns Project Atlas?")
+
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.output["matches"]), 1)
+        self.assertEqual(result.output["matches"][0]["relative_path"], "notes.md")
+
+    async def test_term_fallback_matches_owner_query_to_owns_line(self) -> None:
+        _, result = await self.execute(self.make_tool(), "Beacon review owner")
+
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.output["matches"]), 1)
+        self.assertEqual(result.output["matches"][0]["relative_path"], "nested/beacon.md")
+
+    async def test_term_fallback_matches_completion_to_completed_line(self) -> None:
+        _, result = await self.execute(self.make_tool(), "completion time Beacon")
+
+        self.assertTrue(result.success)
+        self.assertIn(
+            "nested/timing.md",
+            {match["relative_path"] for match in result.output["matches"]},
+        )
+        self.assertIn(
+            "The Beacon trial completed in 3 hours.",
+            {match["snippet"] for match in result.output["matches"]},
+        )
+
+    async def test_generic_benchmark_query_returns_bounded_document_lines(self) -> None:
+        _, result = await self.execute(self.make_tool(), "benchmark", max_matches=2)
+
+        self.assertTrue(result.success)
+        self.assertEqual(len(result.output["matches"]), 2)
+        self.assertTrue(result.output["truncated"])
+
+    async def test_partial_subject_fallback_returns_relevant_lines(self) -> None:
+        _, result = await self.execute(self.make_tool(), "approved budget for Project Atlas")
+
+        self.assertTrue(result.success)
+        self.assertGreaterEqual(len(result.output["matches"]), 1)
+        self.assertEqual(result.output["matches"][0]["relative_path"], "notes.md")
 
     async def test_match_oversize_and_binary_caps_are_enforced(self) -> None:
         (self.root / "large.md").write_text(

@@ -82,6 +82,7 @@ class OllamaAdapter(BaseModelAdapter):
         self._config = config or OllamaConfig()
         self._transport = transport or UrllibHttpTransport()
         self._sleeper = sleeper
+        self._schema_format_supported = True
 
     @property
     def config(self) -> OllamaConfig:
@@ -92,7 +93,17 @@ class OllamaAdapter(BaseModelAdapter):
         structured_error: OllamaResponseValidationError | None = None
 
         for validation_attempt in range(self._config.structured_output_retries + 1):
-            response = await self._post_with_retries(payload)
+            schema_mode_fallback = False
+            try:
+                response = await self._post_with_retries(payload)
+            except OllamaHTTPError as exc:
+                if not _is_grammar_parse_error(exc) or request.response_schema is None:
+                    raise
+                self._schema_format_supported = False
+                payload = dict(payload)
+                payload["format"] = "json"
+                schema_mode_fallback = True
+                response = await self._post_with_retries(payload)
             try:
                 return self._parse_success(
                     request,
@@ -101,6 +112,8 @@ class OllamaAdapter(BaseModelAdapter):
                         request=request,
                         validation_attempt=validation_attempt,
                         final_valid=True,
+                        schema_mode_fallback=schema_mode_fallback,
+                        first_error=structured_error,
                     ),
                 )
             except OllamaResponseValidationError as exc:
@@ -192,6 +205,8 @@ class OllamaAdapter(BaseModelAdapter):
         }
         if request.seed is not None:
             options["seed"] = request.seed
+        if self._config.context_tokens is not None:
+            options["num_ctx"] = self._config.context_tokens
 
         messages = [
             {
@@ -220,9 +235,15 @@ class OllamaAdapter(BaseModelAdapter):
             "stream": False,
             "options": options,
         }
+        if self._config.think is not None:
+            payload["think"] = self._config.think
         if request.response_schema is not None:
             _schema_validator(request.response_schema)
-            payload["format"] = request.response_schema
+            payload["format"] = (
+                request.response_schema
+                if self._schema_format_supported
+                else "json"
+            )
         try:
             json.dumps(payload, ensure_ascii=False, allow_nan=False)
         except (TypeError, ValueError) as exc:
@@ -373,6 +394,8 @@ def _structured_output_telemetry(
     request: ModelRequest,
     validation_attempt: int,
     final_valid: bool,
+    schema_mode_fallback: bool = False,
+    first_error: OllamaResponseValidationError | None = None,
 ) -> dict[str, Any]:
     if request.response_schema is None:
         return {
@@ -382,13 +405,39 @@ def _structured_output_telemetry(
             "final_valid": True,
             "attempt_count": 1,
         }
-    return {
+    telemetry = {
         "first_attempt_valid": validation_attempt == 0 and final_valid,
         "repair_attempted": validation_attempt > 0,
         "repair_succeeded": validation_attempt > 0 and final_valid,
         "final_valid": final_valid,
         "attempt_count": validation_attempt + 1,
     }
+    if schema_mode_fallback:
+        telemetry["schema_mode_fallback"] = True
+    if first_error is not None:
+        telemetry["first_error"] = _structured_error_telemetry(first_error)
+    return telemetry
+
+
+def _structured_error_telemetry(error: OllamaResponseValidationError) -> dict[str, str]:
+    message = str(error)
+    if "not strict JSON" in message:
+        return {"category": "not_json"}
+    if "must be a JSON object" in message:
+        return {"category": "not_object"}
+    marker = "failed schema validation at "
+    if marker in message:
+        remainder = message.split(marker, 1)[1]
+        path = remainder.split(":", 1)[0].strip()
+        return {"category": "schema_validation", "path": path[:128]}
+    return {"category": "unknown"}
+
+
+def _is_grammar_parse_error(error: OllamaHTTPError) -> bool:
+    return (
+        error.status_code == 400
+        and "failed to parse grammar" in error.detail.casefold()
+    )
 
 
 def _strict_json_loads(value: str) -> Any:

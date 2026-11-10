@@ -1,4 +1,5 @@
 environment: development
+model_provider: ollama
 runtime_root: C:\AGI_Runtime
 profile_path: C:\AGI\02_Agents\Profiles\researcher.yaml
 document_roots:
@@ -10,3 +11,10 @@ ollama:
   max_retries: 1
   temperature: 0
   max_tokens: 2048
+runpod:
+  endpoint_id: ""
+  model: qwen3-32b-awq
+  timeout_seconds: 300
+  max_retries: 1
+  temperature: 0.1
+  max_tokens: 1200

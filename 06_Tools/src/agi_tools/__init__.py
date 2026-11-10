@@ -10,6 +10,12 @@ from .file_search import (
     ReadOnlyFileSearchInput,
     SearchRoot,
 )
+from .file_reader import (
+    ReadOnlyFileReader,
+    ReadOnlyFileReaderConfig,
+    ReadOnlyFileReaderInput,
+    ReadOnlyFileReaderOutput,
+)
 from .registry import DecisionRecorder, ToolRegistry
 
 __all__ = [
@@ -23,6 +29,10 @@ __all__ = [
     "ReadOnlyFileSearch",
     "ReadOnlyFileSearchConfig",
     "ReadOnlyFileSearchInput",
+    "ReadOnlyFileReader",
+    "ReadOnlyFileReaderConfig",
+    "ReadOnlyFileReaderInput",
+    "ReadOnlyFileReaderOutput",
     "SearchRoot",
     "ToolInputError",
     "ToolRegistry",

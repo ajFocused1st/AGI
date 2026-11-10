@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -38,6 +39,26 @@ DEFAULT_SENSITIVE_NAMES = frozenset(
 )
 DEFAULT_SENSITIVE_SUFFIXES = frozenset({".cer", ".crt", ".der", ".key", ".p12", ".pem", ".pfx"})
 WINDOWS_HIDDEN_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2)
+QUERY_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "date",
+        "fact",
+        "facts",
+        "find",
+        "for",
+        "in",
+        "is",
+        "of",
+        "on",
+        "the",
+        "what",
+        "when",
+        "who",
+    }
+)
 WINDOWS_REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
 
@@ -195,7 +216,10 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
         deadline = perf_counter() + self.timeout_seconds
         effective_limit = min(tool_input.max_matches, self.config.max_matches)
         needle = tool_input.query if self.config.case_sensitive else tool_input.query.casefold()
+        query_terms = _query_terms(tool_input.query, case_sensitive=self.config.case_sensitive)
+        generic_query = _is_generic_document_query(query_terms)
         matches: list[FileSearchMatch] = []
+        fallback_matches: list[FileSearchMatch] = []
         scanned_files = 0
         skipped_entries = 0
         directories_scanned = 0
@@ -276,8 +300,28 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
                     for line_number, line in enumerate(content.splitlines(), start=1):
                         haystack = line if self.config.case_sensitive else line.casefold()
                         location = haystack.find(needle)
-                        if location < 0:
+                        term_match = _line_matches_terms(haystack, query_terms)
+                        generic_match = generic_query and line.strip()
+                        if location < 0 and not term_match and not generic_match:
+                            fallback_location = _partial_term_location(haystack, query_terms)
+                            if fallback_location >= 0 and len(fallback_matches) < effective_limit:
+                                fallback_matches.append(
+                                    FileSearchMatch(
+                                        source_id=f"{root.label}:{relative_path}",
+                                        root_label=root.label,
+                                        relative_path=relative_path,
+                                        content_sha256=content_sha256,
+                                        line_start=line_number,
+                                        line_end=line_number,
+                                        line_number=line_number,
+                                        snippet=self._snippet(
+                                            line, fallback_location, len(tool_input.query)
+                                        ),
+                                    )
+                                )
                             continue
+                        if location < 0 and query_terms:
+                            location = _first_term_location(haystack, query_terms)
                         matches.append(
                             FileSearchMatch(
                                 source_id=f"{root.label}:{relative_path}",
@@ -310,7 +354,7 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
 
         return FileSearchOutput(
             query=tool_input.query,
-            matches=matches,
+            matches=matches or fallback_matches,
             scanned_files=scanned_files,
             skipped_entries=skipped_entries,
             truncated=truncated,
@@ -470,3 +514,75 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
         except ValueError:
             # Different Windows drives have no common path.
             return False
+
+
+def _query_terms(query: str, *, case_sensitive: bool) -> tuple[str, ...]:
+    text = query if case_sensitive else query.casefold()
+    terms = [
+        term
+        for term in re.findall(r"[A-Za-z0-9]+", text)
+        if len(term) >= 2 and term not in QUERY_STOPWORDS
+    ]
+    return tuple(dict.fromkeys(terms))
+
+
+def _line_matches_terms(haystack: str, query_terms: tuple[str, ...]) -> bool:
+    if not query_terms:
+        return False
+    line_terms = re.findall(r"[A-Za-z0-9]+", haystack)
+    return all(
+        any(
+            line_term == query_term
+            or line_term.startswith(query_term)
+            or query_term.startswith(line_term)
+            or _stem(line_term) == _stem(query_term)
+            for line_term in line_terms
+        )
+        for query_term in query_terms
+    )
+
+
+def _partial_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
+    weak_terms = {"approved", "budget", "financial", "details", "document", "documents"}
+    locations = [
+        location
+        for term in query_terms
+        if term not in weak_terms
+        for candidate in (term, _stem(term))
+        if (location := haystack.find(candidate)) >= 0
+    ]
+    return min(locations) if locations else -1
+
+
+def _first_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
+    locations = [haystack.find(term) for term in query_terms if haystack.find(term) >= 0]
+    return min(locations) if locations else 0
+
+
+def _stem(term: str) -> str:
+    if term == "owner":
+        return "own"
+    if term in {"completion", "completed", "complete", "completes"}:
+        return "complet"
+    for suffix in ("ing", "ers", "ies", "ied", "ed", "es", "s"):
+        if len(term) > len(suffix) + 2 and term.endswith(suffix):
+            if suffix == "s" and term.endswith(("ss", "us", "is", "as")):
+                return term
+            if suffix in {"ies", "ied"}:
+                return term[: -len(suffix)] + "y"
+            return term[: -len(suffix)]
+    return term
+
+
+def _is_generic_document_query(query_terms: tuple[str, ...]) -> bool:
+    if not query_terms:
+        return False
+    generic_terms = {
+        "benchmark",
+        "document",
+        "documents",
+        "local",
+        "summarize",
+        "summary",
+    }
+    return all(term in generic_terms for term in query_terms)

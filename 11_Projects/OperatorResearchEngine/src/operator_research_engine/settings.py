@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from agi_agent_runtime import ReasoningTier
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 
 class OllamaSettings(BaseModel):
@@ -20,15 +21,44 @@ class OllamaSettings(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=8192)
 
 
-class ProjectSettings(BaseModel):
+class RunPodSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    api_key: SecretStr | None = None
+    endpoint_id: str = ""
+    base_url: str | None = None
+    model: str = "qwen3-32b-awq"
+    timeout_seconds: float = Field(default=300, ge=1, le=600)
+    max_retries: int = Field(default=1, ge=0, le=3)
+    temperature: float = Field(default=0.1, ge=0, le=2)
+    max_tokens: int = Field(default=1200, ge=1, le=8192)
+
+
+class ProjectSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, protected_namespaces=())
 
     environment: str = "development"
     workspace_root: Path
     runtime_root: Path
     profile_path: Path
     document_roots: tuple[Path, ...] = Field(min_length=1, max_length=16)
+    model_provider: str = "ollama"
+    reasoning_tier: ReasoningTier = ReasoningTier.STANDARD
     ollama: OllamaSettings
+    runpod: RunPodSettings = Field(default_factory=RunPodSettings)
+
+    @field_validator("model_provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"ollama", "runpod"}:
+            raise ValueError("MODEL_PROVIDER must be either 'ollama' or 'runpod'")
+        return normalized
+
+    @field_validator("reasoning_tier", mode="before")
+    @classmethod
+    def normalize_reasoning_tier(cls, value: object) -> str:
+        return str(value).strip().lower()
 
     @field_validator("workspace_root", "runtime_root", "profile_path", mode="before")
     @classmethod
@@ -75,6 +105,25 @@ def load_settings(config_path: str | Path | None = None) -> ProjectSettings:
     if "OLLAMA_MODEL" in os.environ:
         ollama["model"] = os.environ["OLLAMA_MODEL"]
     raw["ollama"] = ollama
+    if "MODEL_PROVIDER" in os.environ:
+        raw["model_provider"] = os.environ["MODEL_PROVIDER"]
+    if "AGI_REASONING_TIER" in os.environ:
+        raw["reasoning_tier"] = os.environ["AGI_REASONING_TIER"]
+    runpod = dict(raw.get("runpod") or {})
+    environment_fields = {
+        "RUNPOD_API_KEY": "api_key",
+        "RUNPOD_ENDPOINT_ID": "endpoint_id",
+        "RUNPOD_BASE_URL": "base_url",
+        "RUNPOD_MODEL": "model",
+        "RUNPOD_TIMEOUT_SECONDS": "timeout_seconds",
+        "RUNPOD_MAX_RETRIES": "max_retries",
+        "RUNPOD_TEMPERATURE": "temperature",
+        "RUNPOD_MAX_TOKENS": "max_tokens",
+    }
+    for environment_name, field_name in environment_fields.items():
+        if environment_name in os.environ:
+            runpod[field_name] = os.environ[environment_name]
+    raw["runpod"] = runpod
     if "AGI_RUNTIME_ROOT" in os.environ:
         raw["runtime_root"] = os.environ["AGI_RUNTIME_ROOT"]
     if "AGI_DOCUMENT_ROOT" in os.environ:

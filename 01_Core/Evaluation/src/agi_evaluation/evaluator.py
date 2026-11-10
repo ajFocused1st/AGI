@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
+from decimal import Decimal, InvalidOperation
 from typing import Self
 from uuid import UUID
 
@@ -87,6 +89,16 @@ class RuleBasedEvaluator:
             citations=citations,
             expectations=expectations,
         )
+        calculator_consistent, calculator_detail = self._calculator_consistency(
+            answer=answer,
+            evidence=evidence,
+            citations=citations,
+        )
+        document_supported, document_detail = self._document_claim_support(
+            answer=answer,
+            evidence=evidence,
+            citations=citations,
+        )
         plan_score, plan_detail = self._plan_adherence(plan, expectations)
         tool_score, tool_detail, permission_integrity = self._tool_correctness(
             tool_requests=tool_requests,
@@ -143,6 +155,22 @@ class RuleBasedEvaluator:
                 details="Every tool result followed a matching permission decision."
                 if permission_integrity
                 else "A tool result lacks a prior matching permission decision.",
+            ),
+            RuleBasedCheck(
+                name="calculator_evidence_consistency",
+                passed=calculator_consistent,
+                score=1.0 if calculator_consistent else 0.0,
+                weight=0.0,
+                critical=True,
+                details=calculator_detail,
+            ),
+            RuleBasedCheck(
+                name="document_evidence_support",
+                passed=document_supported,
+                score=1.0 if document_supported else 0.0,
+                weight=0.0,
+                critical=True,
+                details=document_detail,
             ),
         ]
 
@@ -247,6 +275,91 @@ class RuleBasedEvaluator:
         return 0.5, "Evidence exists, but the response does not cite it.", citation_integrity
 
     @staticmethod
+    def _calculator_consistency(
+        *,
+        answer: str,
+        evidence: Sequence[EvidenceReference],
+        citations: Sequence[Citation],
+    ) -> tuple[bool, str]:
+        evidence_by_id = {item.evidence_id: item for item in evidence}
+        cited_evidence = [
+            evidence_by_id[citation.evidence_id]
+            for citation in citations
+            if citation.evidence_id in evidence_by_id
+        ]
+        calculator_items = [
+            item
+            for item in cited_evidence
+            if item.metadata.get("retrieval_tool") == "calculator"
+            or item.source_id == "tool:calculator"
+        ]
+        if not calculator_items:
+            return True, "No calculator evidence was cited."
+
+        answer_numbers = _numbers_in_text(answer)
+        missing_values: list[str] = []
+        for item in calculator_items:
+            expected = _decimal_or_none(item.metadata.get("value"))
+            if expected is None:
+                expected = _calculator_value_from_excerpt(item.excerpt or "")
+            if expected is None:
+                missing_values.append(item.excerpt or item.source_id)
+                continue
+            if expected not in answer_numbers:
+                missing_values.append(str(expected))
+
+        if missing_values:
+            return (
+                False,
+                "Cited calculator evidence result is absent from the answer: "
+                + ", ".join(missing_values),
+            )
+        return True, "Cited calculator evidence matches numeric answer text."
+
+    @staticmethod
+    def _document_claim_support(
+        *,
+        answer: str,
+        evidence: Sequence[EvidenceReference],
+        citations: Sequence[Citation],
+    ) -> tuple[bool, str]:
+        evidence_by_id = {item.evidence_id: item for item in evidence}
+        cited_evidence = [
+            evidence_by_id[citation.evidence_id]
+            for citation in citations
+            if citation.evidence_id in evidence_by_id
+        ]
+        document_items = [
+            item
+            for item in cited_evidence
+            if item.metadata.get("retrieval_tool") == "read_only_file_search"
+            or item.metadata.get("source_type", "document") == "document"
+        ]
+        if not document_items:
+            return True, "No document evidence was cited."
+
+        cited_text = "\n".join(item.excerpt or "" for item in document_items)
+        answer_for_support = _strip_rendered_citations(answer)
+        answer_tokens = _concrete_tokens(answer_for_support)
+        if not answer_tokens:
+            return True, "The answer contains no concrete claim tokens to check."
+
+        cited_tokens = _concrete_tokens(cited_text)
+        supported = sorted(answer_tokens & cited_tokens)
+        minimum_overlap = min(len(answer_tokens), max(2, (len(answer_tokens) + 1) // 2))
+        missing_entities = sorted(
+            _titlecase_terms(answer_for_support) - _titlecase_terms(cited_text)
+        )
+        if len(supported) < minimum_overlap or missing_entities:
+            details = [
+                f"supported concrete terms: {len(supported)}/{len(answer_tokens)}",
+            ]
+            if missing_entities:
+                details.append("missing cited entities: " + ", ".join(missing_entities))
+            return False, "; ".join(details)
+        return True, "Cited document evidence supports the answer's concrete terms."
+
+    @staticmethod
     def _plan_adherence(
         plan: TaskPlan, expectations: EvaluationExpectations
     ) -> tuple[float, str]:
@@ -313,7 +426,7 @@ class RuleBasedEvaluator:
         claims: Sequence[str] | None,
     ) -> tuple[float, str, tuple[str, ...]]:
         if claims is None:
-            return 0.5, "Unsupported-claim analysis was not supplied.", ()
+            return 1.0, "No deterministic unsupported claims were supplied.", ()
         normalized = tuple(claim.strip() for claim in claims if claim.strip())
         if not normalized:
             return 1.0, "No unsupported claims were identified by deterministic checks.", ()
@@ -335,3 +448,78 @@ class RuleBasedEvaluator:
             if not any(term in answer.casefold() for term in uncertainty_terms):
                 return 0.0, "The answer does not acknowledge missing information."
         return 1.0, "The response is bounded, direct, and handles required uncertainty."
+
+
+def _numbers_in_text(value: str) -> set[Decimal]:
+    numbers: set[Decimal] = set()
+    for match in re.finditer(r"(?<![\w.])-?(?:\d+(?:\.\d*)?|\.\d+)(?![\w.])", value):
+        parsed = _decimal_or_none(match.group(0))
+        if parsed is not None:
+            numbers.add(parsed)
+    return numbers
+
+
+def _calculator_value_from_excerpt(excerpt: str) -> Decimal | None:
+    if "=" not in excerpt:
+        return None
+    return _decimal_or_none(excerpt.rsplit("=", maxsplit=1)[-1].strip())
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return parsed.normalize()
+
+
+_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "are",
+        "as",
+        "at",
+        "be",
+        "by",
+        "for",
+        "from",
+        "in",
+        "is",
+        "it",
+        "of",
+        "on",
+        "or",
+        "the",
+        "to",
+        "was",
+        "were",
+        "who",
+        "with",
+    }
+)
+
+
+def _concrete_tokens(value: str) -> set[str]:
+    tokens: set[str] = set()
+    for match in re.finditer(r"[A-Za-z][A-Za-z0-9_-]{2,}|\d{4}-\d{2}-\d{2}|\d+", value):
+        token = match.group(0).casefold()
+        if token not in _STOPWORDS:
+            tokens.add(token)
+    return tokens
+
+
+def _titlecase_terms(value: str) -> set[str]:
+    terms: set[str] = set()
+    for match in re.finditer(r"\b[A-Z][a-z][A-Za-z0-9_-]*\b", value):
+        term = match.group(0)
+        if term.casefold() not in _STOPWORDS:
+            terms.add(term.casefold())
+    return terms
+
+
+def _strip_rendered_citations(value: str) -> str:
+    return re.sub(r"\[[^\]]+\]", " ", value)

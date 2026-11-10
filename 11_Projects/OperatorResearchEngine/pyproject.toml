@@ -12,6 +12,7 @@ dependencies = [
   "agi-contracts>=0.1.0",
   "agi-evaluation>=0.1.0",
   "agi-ollama>=0.1.0",
+  "agi-runpod>=0.1.0",
   "agi-tools>=0.1.0",
   "pydantic>=2.8,<3",
   "PyYAML>=6,<7",

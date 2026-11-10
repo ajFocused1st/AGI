@@ -14,12 +14,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Research approved local documents safely.")
     parser.add_argument("--goal", required=True, help="Research question or calculation goal")
     parser.add_argument("--config", help="Path to a project YAML configuration")
+    parser.add_argument(
+        "--tier",
+        choices=("fast", "standard", "deep", "max"),
+        help="Reasoning budget tier for this run",
+    )
     parser.add_argument("--json", action="store_true", help="Print the full response as JSON")
     return parser
 
 
 async def _run(arguments: argparse.Namespace) -> int:
     settings = load_settings(arguments.config)
+    if arguments.tier:
+        settings = settings.model_copy(update={"reasoning_tier": arguments.tier})
     response = await build_engine(settings).research(arguments.goal)
     if arguments.json:
         print(response.model_dump_json(indent=2))

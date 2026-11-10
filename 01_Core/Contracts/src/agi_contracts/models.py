@@ -134,6 +134,38 @@ class EvidenceReference(ContractModel):
     metadata: JsonObject = Field(default_factory=dict)
 
 
+class EvidenceItem(ContractModel):
+    evidence_id: UUID = Field(default_factory=uuid4)
+    source_id: Identifier
+    source_hash: Sha256Digest
+    source_type: Identifier = "document"
+    excerpt: Annotated[
+        str, StringConstraints(strip_whitespace=False, min_length=1, max_length=4096)
+    ]
+    retrieval_query: ShortText
+    retrieval_tool: Identifier
+    retrieved_at: AwareDatetime = Field(default_factory=utc_now)
+    metadata: JsonObject = Field(default_factory=dict)
+
+
+class EvidenceBundle(ContractModel):
+    bundle_id: UUID = Field(default_factory=uuid4)
+    items: list[EvidenceItem] = Field(default_factory=list, max_length=512)
+    source_count: int = Field(ge=0, le=512)
+    evidence_count: int = Field(ge=0, le=512)
+    bundle_hash: Sha256Digest
+
+    @model_validator(mode="after")
+    def counts_and_ids_must_match(self) -> Self:
+        if self.evidence_count != len(self.items):
+            raise ValueError("evidence_count must equal items length")
+        if self.source_count != len({item.source_id for item in self.items}):
+            raise ValueError("source_count must equal distinct source count")
+        if len({item.evidence_id for item in self.items}) != len(self.items):
+            raise ValueError("evidence IDs must be unique")
+        return self
+
+
 class Citation(ContractModel):
     citation_id: UUID = Field(default_factory=uuid4)
     evidence_id: UUID
@@ -284,6 +316,7 @@ class TaskRequirements(ContractModel):
     forbidden_capabilities: list[Identifier] = Field(default_factory=list, max_length=128)
     maximum_tool_calls: int | None = Field(default=None, ge=0, le=100)
     requirement_policy_version: Identifier = "task-requirements.v1"
+    task_subjects: list[ShortText] = Field(default_factory=list, max_length=32)
 
     @model_validator(mode="after")
     def validate_capability_policy(self) -> Self:
@@ -321,6 +354,29 @@ class PlanRequirementResult(ContractModel):
     correction_attempted: bool = False
     correction_succeeded: bool = False
     validation_messages: list[ShortText] = Field(default_factory=list, max_length=256)
+
+
+class ToolArgumentValidationResult(ContractModel):
+    tool_name: Identifier
+    valid: bool
+    schema_errors: list[ShortText] = Field(default_factory=list, max_length=128)
+    semantic_errors: list[ShortText] = Field(default_factory=list, max_length=128)
+    unknown_arguments: list[Identifier] = Field(default_factory=list, max_length=128)
+    missing_arguments: list[Identifier] = Field(default_factory=list, max_length=128)
+    repair_attempted: bool = False
+    repair_succeeded: bool = False
+    final_valid: bool
+    dispatch_allowed: bool
+    validation_messages: list[ShortText] = Field(default_factory=list, max_length=256)
+
+
+class ToolArgumentRepairHistory(ContractModel):
+    tool_name: Identifier
+    initial_arguments_redacted: JsonObject = Field(default_factory=dict)
+    validation_result: ToolArgumentValidationResult
+    repaired_arguments_redacted: JsonObject | None = None
+    repaired_validation_result: ToolArgumentValidationResult | None = None
+    attempt_count: int = Field(ge=1, le=2)
 
 
 class ResponseRequirementResult(ContractModel):
@@ -479,6 +535,10 @@ class RunRecord(ContractModel):
     response_requirement_results: list[ResponseRequirementResult] = Field(
         default_factory=list, max_length=2
     )
+    tool_argument_histories: list[ToolArgumentRepairHistory] = Field(
+        default_factory=list, max_length=512
+    )
+    evidence_bundle: EvidenceBundle | None = None
     permission_decisions: list[PermissionDecision] = Field(
         default_factory=list, max_length=512
     )
@@ -520,6 +580,8 @@ __all__ = [
     "EvaluationScores",
     "EvaluationVerdict",
     "EvidenceReference",
+    "EvidenceBundle",
+    "EvidenceItem",
     "MessageRole",
     "ModelCritique",
     "ModelMessage",
@@ -538,6 +600,8 @@ __all__ = [
     "TaskRequirements",
     "TaskStep",
     "ToolDefinition",
+    "ToolArgumentRepairHistory",
+    "ToolArgumentValidationResult",
     "ToolRequest",
     "ToolResult",
     "utc_now",

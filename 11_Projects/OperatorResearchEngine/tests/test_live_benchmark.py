@@ -15,6 +15,7 @@ from agi_contracts import (
     EvaluationResult,
     EvaluationScores,
     EvaluationVerdict,
+    ErrorDetail,
     EvidenceReference,
     ModelUsage,
     PermissionDecision,
@@ -30,6 +31,7 @@ from operator_research_engine.live_benchmark import (
     EXIT_QUALITY_GATE_FAILURE,
     _metrics_from_record,
     _percentile,
+    _record_failure_type,
     _redact_message,
     _write_outputs,
     summarize_attempts,
@@ -152,6 +154,23 @@ class LiveBenchmarkTests(unittest.TestCase):
         self.assertTrue(metrics["citation_present"])
         self.assertEqual(metrics["citation_count"], 1)
         self.assertTrue(metrics["citation_validation_success"])
+        self.assertTrue(metrics["document_evidence_support"])
+
+    def test_record_failure_type_prefers_exception_type(self) -> None:
+        record = _record_with_denial().model_copy(
+            update={
+                "errors": [
+                    ErrorDetail(
+                        code="runtime_failure",
+                        component="agent_runtime",
+                        message="safe failure",
+                        details={"exception_type": "OllamaResponseValidationError"},
+                    )
+                ]
+            }
+        )
+
+        self.assertEqual(_record_failure_type(record), "OllamaResponseValidationError")
 
     def test_redaction_is_limited(self) -> None:
         message = "token=abc " + ("x" * 1000)
@@ -203,6 +222,25 @@ def _attempt(
         "response_requirements_final_valid": True,
         "citation_requirement_satisfied": True,
         "uncertainty_requirement_satisfied": True,
+        "tool_argument_validation_attempted": True,
+        "tool_arguments_valid_first_attempt": True,
+        "tool_argument_repair_attempted": False,
+        "tool_argument_repair_succeeded": False,
+        "tool_arguments_final_valid": True,
+        "tool_dispatch_allowed": True,
+        "retrieval_dispatch_rate": 1.0,
+        "retrieval_execution_success": retrieval_executed,
+        "retrieval_nonempty_result": retrieval_executed,
+        "evidence_item_count": 1 if retrieval_executed else 0,
+        "evidence_source_count": 1 if retrieval_executed else 0,
+        "evidence_bundle_valid": True,
+        "grounded_claim_count": 1 if citation else 0,
+        "claims_with_evidence_count": 1 if citation else 0,
+        "claims_with_evidence_rate": 1.0,
+        "unknown_evidence_reference_count": 0,
+        "citation_mapping_success": citation,
+        "controlled_failure_type": None,
+        "unexpected_exception": error is not None,
         "invalid_tool_proposal_count": 0,
         "approved_tool_request_count": 1,
         "denied_tool_request_count": 1 if safety else 0,
@@ -214,6 +252,8 @@ def _attempt(
         "citation_count": 1 if citation else 0,
         "citation_validation_success": citation,
         "unsupported_claim_count": 0,
+        "calculator_evidence_consistency": True,
+        "document_evidence_support": True,
         "task_completion_score": 1.0 if verdict == "passed" else 0.0,
         "error_type": error,
         "error_message_redacted": error,
@@ -259,6 +299,26 @@ def _record_with_denial() -> RunRecord:
             weight=0,
             critical=False,
             details="All citations resolve.",
+        )
+    )
+    evaluation.rule_based_checks.append(
+        RuleBasedCheck(
+            name="document_evidence_support",
+            passed=True,
+            score=1,
+            weight=0,
+            critical=True,
+            details="Cited document evidence supports the answer.",
+        )
+    )
+    evaluation.rule_based_checks.append(
+        RuleBasedCheck(
+            name="calculator_evidence_consistency",
+            passed=True,
+            score=1,
+            weight=0,
+            critical=True,
+            details="No calculator evidence was cited.",
         )
     )
     search_request = ToolRequest(tool_name="read_only_file_search")

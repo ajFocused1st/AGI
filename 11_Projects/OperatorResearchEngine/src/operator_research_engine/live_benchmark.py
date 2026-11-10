@@ -22,6 +22,7 @@ from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
+from agi_agent_runtime import RuntimeExecutionError
 from agi_contracts import RunRecord, TaskRequirements
 
 from .dependencies import build_engine
@@ -40,6 +41,15 @@ IMMUTABLE_BASELINE = {
     "safety_denial_rate": 1.0,
     "unhandled_exception_rate": 0.0,
     "mean_latency_ms": 5301.911,
+}
+REQUIREMENT_VALIDATION_BASELINE = {
+    "final_pass_rate": 0.416667,
+    "grounding_task_pass_rate": 0.125,
+    "retrieval_compliance_rate": 0.975,
+    "citation_coverage_rate": 0.45,
+    "safety_denial_rate": 1.0,
+    "unhandled_exception_rate": 0.016667,
+    "mean_latency_ms": 6354.39,
 }
 
 
@@ -147,7 +157,11 @@ async def _run_case_attempt(
         "category": case["category"],
         "iteration": iteration,
         "run_id": None,
-        "model_id": settings.ollama.model,
+        "model_id": (
+            settings.runpod.model
+            if settings.model_provider == "runpod"
+            else settings.ollama.model
+        ),
         "started_at": started_at.isoformat(),
         "completed_at": None,
         "latency_ms": 0.0,
@@ -169,6 +183,24 @@ async def _run_case_attempt(
         "response_requirements_final_valid": False,
         "citation_requirement_satisfied": False,
         "uncertainty_requirement_satisfied": False,
+        "tool_arguments_valid_first_attempt": False,
+        "tool_argument_repair_attempted": False,
+        "tool_argument_repair_succeeded": False,
+        "tool_arguments_final_valid": False,
+        "tool_dispatch_allowed": False,
+        "retrieval_dispatch_rate": 0.0,
+        "retrieval_execution_success": False,
+        "retrieval_nonempty_result": False,
+        "evidence_item_count": 0,
+        "evidence_source_count": 0,
+        "evidence_bundle_valid": False,
+        "grounded_claim_count": 0,
+        "claims_with_evidence_count": 0,
+        "claims_with_evidence_rate": 1.0,
+        "unknown_evidence_reference_count": 0,
+        "citation_mapping_success": False,
+        "controlled_failure_type": None,
+        "unexpected_exception": False,
         "invalid_tool_proposal_count": 0,
         "approved_tool_request_count": 0,
         "denied_tool_request_count": 0,
@@ -180,6 +212,8 @@ async def _run_case_attempt(
         "citation_count": 0,
         "citation_validation_success": False,
         "unsupported_claim_count": 0,
+        "calculator_evidence_consistency": False,
+        "document_evidence_support": False,
         "task_completion_score": 0.0,
         "error_type": None,
         "error_message_redacted": None,
@@ -196,14 +230,36 @@ async def _run_case_attempt(
         run_path = settings.runtime_root / "logs" / str(response.run_id) / "run.json"
         record = RunRecord.model_validate_json(run_path.read_text(encoding="utf-8"))
         base.update(_metrics_from_record(record, case))
+    except RuntimeExecutionError as exc:
+        base["run_id"] = str(exc.run_id)
+        base["error_type"] = type(exc).__name__
+        base["error_message_redacted"] = _redact_message(str(exc))
+        run_path = settings.runtime_root / "logs" / str(exc.run_id) / "run.json"
+        if run_path.is_file():
+            record = RunRecord.model_validate_json(run_path.read_text(encoding="utf-8"))
+            base.update(_metrics_from_record(record, case))
+            base["controlled_failure_type"] = _record_failure_type(record)
+        else:
+            base["controlled_failure_type"] = type(exc).__name__
     except Exception as exc:
         base["error_type"] = type(exc).__name__
         base["error_message_redacted"] = _redact_message(str(exc))
+        base["unexpected_exception"] = True
     finally:
         completed_at = datetime.now(UTC)
         base["completed_at"] = completed_at.isoformat()
         base["latency_ms"] = round(max(0.0, (perf_counter() - started_clock) * 1000.0), 3)
     return base
+
+
+def _record_failure_type(record: RunRecord) -> str | None:
+    for error in record.errors:
+        exception_type = error.details.get("exception_type")
+        if isinstance(exception_type, str) and exception_type:
+            return exception_type
+        if error.code:
+            return error.code
+    return None
 
 
 def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, Any]:
@@ -216,6 +272,8 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
     ]
     final_verdict = evaluation.verdict.value if evaluation is not None else "failed"
     citation_integrity = _check_passed(record, "citation_integrity")
+    calculator_consistency = _check_passed(record, "calculator_evidence_consistency")
+    document_support = _check_passed(record, "document_evidence_support")
     task_score = (
         evaluation.scores.task_completion
         if evaluation is not None and evaluation.scores is not None
@@ -250,6 +308,31 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         else response_requirement
     )
     failures = _case_failures(case, record)
+    histories = record.tool_argument_histories
+    retrieval_results = [
+        item for item in record.tool_results if item.tool_name == "read_only_file_search"
+    ]
+    successful_retrievals = [item for item in retrieval_results if item.success]
+    nonempty_retrievals = [
+        item
+        for item in successful_retrievals
+        if isinstance(item.output.get("matches"), list) and item.output["matches"]
+    ]
+    grounding = record.metadata.get("answer_grounding", {})
+    controlled_codes = {
+        "tool_arguments_invalid",
+        "tool_argument_repair_failed",
+        "tool_dispatch_blocked",
+        "retrieval_failed",
+        "retrieval_returned_no_evidence",
+        "evidence_bundle_invalid",
+        "unknown_evidence_reference",
+        "insufficient_evidence",
+        "citation_requirement_unmet",
+        "uncertainty_requirement_unmet",
+        "response_repair_failed",
+    }
+    controlled = [error.code for error in record.errors if error.code in controlled_codes]
     if failures and final_verdict == "passed":
         final_verdict = "failed"
     return {
@@ -295,6 +378,50 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
             not response_requirement.uncertainty_required
             or response_requirement.uncertainty_statement_present
         ),
+        "tool_argument_validation_attempted": bool(histories),
+        "tool_arguments_valid_first_attempt": not histories
+        or all(item.validation_result.valid for item in histories),
+        "tool_argument_repair_attempted": any(item.attempt_count == 2 for item in histories),
+        "tool_argument_repair_succeeded": any(
+            item.repaired_validation_result is not None
+            and item.repaired_validation_result.valid
+            for item in histories
+        ),
+        "tool_arguments_final_valid": not histories
+        or all(
+            (item.repaired_validation_result or item.validation_result).final_valid
+            for item in histories
+        ),
+        "tool_dispatch_allowed": bool(histories)
+        and all(
+            (item.repaired_validation_result or item.validation_result).dispatch_allowed
+            for item in histories
+        ),
+        "retrieval_dispatch_rate": 1.0 if retrieval_results else 0.0,
+        "retrieval_execution_success": bool(successful_retrievals),
+        "retrieval_nonempty_result": bool(nonempty_retrievals),
+        "evidence_item_count": record.evidence_bundle.evidence_count
+        if record.evidence_bundle
+        else 0,
+        "evidence_source_count": record.evidence_bundle.source_count
+        if record.evidence_bundle
+        else 0,
+        "evidence_bundle_valid": record.evidence_bundle is not None,
+        "grounded_claim_count": int(grounding.get("grounded_claim_count", 0)),
+        "claims_with_evidence_count": int(
+            grounding.get("claims_with_evidence_count", 0)
+        ),
+        "claims_with_evidence_rate": _rate(
+            int(grounding.get("claims_with_evidence_count", 0)),
+            int(grounding.get("grounded_claim_count", 0)),
+            empty_value=1.0,
+        ),
+        "unknown_evidence_reference_count": int(
+            grounding.get("unknown_evidence_reference_count", 0)
+        ),
+        "citation_mapping_success": citation_integrity,
+        "controlled_failure_type": controlled[0] if controlled else None,
+        "unexpected_exception": False,
         "invalid_tool_proposal_count": invalid_tool_proposals,
         "approved_tool_request_count": len(approved),
         "denied_tool_request_count": len(denied),
@@ -308,6 +435,8 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         "unsupported_claim_count": (
             len(evaluation.unsupported_claims) if evaluation is not None else 0
         ),
+        "calculator_evidence_consistency": calculator_consistency,
+        "document_evidence_support": document_support,
         "task_completion_score": task_score,
         "error_type": "case_expectation_failed" if failures else None,
         "error_message_redacted": "; ".join(failures) if failures else None,
@@ -327,6 +456,15 @@ def summarize_attempts(
     retrieval_cases = [item for item in attempts if item["retrieval_required"]]
     citation_required_cases = [item for item in attempts if item["citation_required"]]
     citation_present_cases = [item for item in attempts if item["citation_present"]]
+    tool_argument_cases = [
+        item
+        for item in attempts
+        if item.get("tool_dispatch_allowed")
+        or item.get("tool_argument_repair_succeeded")
+    ]
+    evidence_claim_cases = [
+        item for item in attempts if item["retrieval_required"] or item["citation_required"]
+    ]
     exception_count = sum(1 for item in attempts if item["error_type"] not in (None, "case_expectation_failed"))
     latencies = [float(item["latency_ms"]) for item in attempts]
     summary = {
@@ -428,6 +566,49 @@ def summarize_attempts(
             sum(1 for item in attempts if item["unsupported_claim_count"] > 0),
             total,
         ),
+        "calculator_evidence_consistency_rate": _rate(
+            sum(item["calculator_evidence_consistency"] for item in attempts),
+            total,
+        ),
+        "document_evidence_support_rate": _rate(
+            sum(item["document_evidence_support"] for item in attempts),
+            total,
+        ),
+        "tool_arguments_final_valid_rate": _rate(
+            sum(item["tool_arguments_final_valid"] for item in tool_argument_cases),
+            len(tool_argument_cases),
+            empty_value=1.0,
+        ),
+        "tool_argument_repair_rate": _rate(
+            sum(item["tool_argument_repair_attempted"] for item in tool_argument_cases),
+            len(tool_argument_cases),
+            empty_value=0.0,
+        ),
+        "retrieval_execution_success_rate": _rate(
+            sum(item["retrieval_execution_success"] for item in retrieval_cases),
+            len(retrieval_cases),
+            empty_value=1.0,
+        ),
+        "retrieval_nonempty_result_rate": _rate(
+            sum(item["retrieval_nonempty_result"] for item in retrieval_cases),
+            len(retrieval_cases),
+            empty_value=1.0,
+        ),
+        "claims_with_evidence_rate": _rate(
+            sum(item["claims_with_evidence_count"] for item in evidence_claim_cases),
+            sum(item["grounded_claim_count"] for item in evidence_claim_cases),
+            empty_value=1.0,
+        ),
+        "controlled_failure_count": sum(
+            item["controlled_failure_type"] is not None for item in attempts
+        ),
+        "controlled_failure_rate": _rate(
+            sum(item["controlled_failure_type"] is not None for item in attempts), total
+        ),
+        "unexpected_exception_count": sum(item["unexpected_exception"] for item in attempts),
+        "unexpected_exception_rate": _rate(
+            sum(item["unexpected_exception"] for item in attempts), total
+        ),
         "unhandled_exception_rate": _rate(exception_count, total),
         "mean_latency_ms": round(statistics.fmean(latencies), 3) if latencies else 0.0,
         "median_latency_ms": round(statistics.median(latencies), 3) if latencies else 0.0,
@@ -444,6 +625,20 @@ def summarize_attempts(
     summary["baseline_comparison"] = {
         name: _comparison(baseline, float(summary[name]))
         for name, baseline in IMMUTABLE_BASELINE.items()
+    }
+    summary["experiment_comparison"] = {
+        name: {
+            "baseline_value": round(IMMUTABLE_BASELINE[name], 6),
+            "requirement_validation_value": round(requirement_value, 6),
+            "new_value": round(float(summary[name]), 6),
+            "absolute_change": round(float(summary[name]) - requirement_value, 6),
+            "relative_change": (
+                round((float(summary[name]) - requirement_value) / requirement_value, 6)
+                if requirement_value
+                else None
+            ),
+        }
+        for name, requirement_value in REQUIREMENT_VALIDATION_BASELINE.items()
     }
     summary["failed_quality_gates"] = _failed_quality_gates(summary, quality_gates)
     return summary
@@ -567,6 +762,9 @@ def _report(summary: dict[str, Any], manifest: dict[str, Any]) -> str:
         f"({summary['citation_present_attempts']}/"
         f"{summary['citation_required_attempts']})",
         f"- Citation validation rate: {summary['citation_validation_rate']:.3f}",
+        f"- Calculator evidence consistency rate: "
+        f"{summary['calculator_evidence_consistency_rate']:.3f}",
+        f"- Document evidence support rate: {summary['document_evidence_support_rate']:.3f}",
         f"- Grounding task pass rate: {summary['grounding_task_pass_rate']:.3f}",
         f"- Mean latency ms: {summary['mean_latency_ms']:.3f}",
         "",
@@ -593,14 +791,20 @@ def _settings_for_live_run(
     runtime_root: Path,
 ) -> ProjectSettings:
     settings = load_settings()
-    return settings.model_copy(
-        update={
-            "runtime_root": runtime_root,
+    provider_update = (
+        {
+            "runpod": settings.runpod.model_copy(
+                update={"model": model, "timeout_seconds": timeout_seconds}
+            )
+        }
+        if settings.model_provider == "runpod"
+        else {
             "ollama": settings.ollama.model_copy(
                 update={"model": model, "timeout_seconds": timeout_seconds}
-            ),
+            )
         }
     )
+    return settings.model_copy(update={"runtime_root": runtime_root, **provider_update})
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -638,6 +842,24 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "response_requirements_final_valid",
         "citation_requirement_satisfied",
         "uncertainty_requirement_satisfied",
+        "tool_arguments_valid_first_attempt",
+        "tool_argument_repair_attempted",
+        "tool_argument_repair_succeeded",
+        "tool_arguments_final_valid",
+        "tool_dispatch_allowed",
+        "retrieval_dispatch_rate",
+        "retrieval_execution_success",
+        "retrieval_nonempty_result",
+        "evidence_item_count",
+        "evidence_source_count",
+        "evidence_bundle_valid",
+        "grounded_claim_count",
+        "claims_with_evidence_count",
+        "claims_with_evidence_rate",
+        "unknown_evidence_reference_count",
+        "citation_mapping_success",
+        "controlled_failure_type",
+        "unexpected_exception",
         "invalid_tool_proposal_count",
         "approved_tool_request_count",
         "denied_tool_request_count",
@@ -649,6 +871,8 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "citation_count",
         "citation_validation_success",
         "unsupported_claim_count",
+        "calculator_evidence_consistency",
+        "document_evidence_support",
         "task_completion_score",
         "error_type",
         "error_message_redacted",
@@ -667,7 +891,11 @@ def _failed_quality_gates(
     failed: dict[str, float] = {}
     for name, threshold in gates.items():
         observed = float(summary[name])
-        if name in {"unhandled_exception_rate", "invalid_tool_proposal_rate"}:
+        if name in {
+            "unhandled_exception_rate",
+            "unexpected_exception_rate",
+            "invalid_tool_proposal_rate",
+        }:
             if observed > threshold:
                 failed[name] = observed
         elif observed < threshold:

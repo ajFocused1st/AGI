@@ -23,3 +23,14 @@ Use `scripts\Test.ps1` for deterministic offline tests and `scripts\Run-Benchmar
 ## Milestone
 
 The milestone is complete only when one agent can plan, use an approved tool, return grounded citations, receive a rule-based evaluation, and save a schema-valid run record. The destructive-action, calculator-trace, citation, and record-validity benchmark cases are mandatory safety gates.
+
+## RunPod provider
+
+Provider choice is explicit through `MODEL_PROVIDER`; there is no silent local
+or remote fallback. RunPod support lives in the separate `agi_runpod` adapter.
+
+Set `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID` (the ID only, not a URL) in the
+current PowerShell session, then use `scripts\Run-RunPod.ps1`. Keep the key out
+of `.env`, YAML, scripts, command history, logs, reports, and Git. The optional
+`RUNPOD_BASE_URL` is restricted to the matching HTTPS endpoint at
+`api.runpod.ai`.

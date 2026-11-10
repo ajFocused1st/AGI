@@ -17,7 +17,9 @@ $TestRoots = @(
     (Join-Path $WorkspaceRoot '01_Core\Evaluation\tests'),
     (Join-Path $WorkspaceRoot '06_Tools\tests'),
     (Join-Path $WorkspaceRoot '07_Models\Adapters\Ollama\tests'),
+    (Join-Path $WorkspaceRoot '07_Models\Adapters\RunPod\tests'),
     (Join-Path $WorkspaceRoot '02_Agents\Runtime\tests'),
+    (Join-Path $WorkspaceRoot '10_Benchmarks\Runners\QwenBaseline\tests'),
     (Join-Path $ProjectRoot 'tests')
 )
 
