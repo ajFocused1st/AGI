@@ -21,6 +21,9 @@ def build_evidence_bundle(
             if item is not None:
                 items.append(item)
             continue
+        if result.tool_name == "read_only_file_reader":
+            items.extend(_reader_evidence_items(result))
+            continue
         if result.tool_name != "read_only_file_search":
             continue
         request = request_by_id.get(result.request_id)
@@ -77,6 +80,49 @@ def build_evidence_bundle(
 
 def _sanitize_excerpt(value: str) -> str:
     return " ".join(value.replace("\x00", "").split())[:4096]
+
+
+_MAX_READER_LINES = 64
+
+
+def _reader_evidence_items(result: ToolResult) -> list[EvidenceItem]:
+    """One citable item per non-empty line, so citations stay line-precise."""
+
+    output = result.output
+    source_hash = output.get("content_sha256")
+    content = output.get("content")
+    if not isinstance(source_hash, str) or len(source_hash) != 64 or not isinstance(content, str):
+        return []
+    try:
+        first_line = int(output.get("line_start", 1))
+    except (TypeError, ValueError):
+        return []
+    source_id = str(output.get("source_id", ""))
+    relative_path = str(output.get("relative_path", ""))
+    query = f"{relative_path}:{first_line}"
+    items: list[EvidenceItem] = []
+    for offset, line in enumerate(content.splitlines()):
+        excerpt = _sanitize_excerpt(line)
+        if not excerpt:
+            continue
+        line_number = first_line + offset
+        items.append(
+            EvidenceItem(
+                source_id=source_id,
+                source_hash=source_hash,
+                excerpt=excerpt,
+                retrieval_query=query,
+                retrieval_tool=result.tool_name,
+                metadata={
+                    "relative_path": relative_path,
+                    "line_start": line_number,
+                    "line_end": line_number,
+                },
+            )
+        )
+        if len(items) >= _MAX_READER_LINES:
+            break
+    return items
 
 
 def _calculator_evidence_item(result: ToolResult) -> EvidenceItem | None:

@@ -69,12 +69,11 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
             routing_policy=policy,
         )
 
-    @unittest.expectedFailure
     async def test_fast_tier_completes_a_simple_question(self) -> None:
         # Defect: FAST allows 1 model call but the runtime always needs plan + answer.
         registry = ToolRegistry()
         registry.register(Calculator())
-        adapter = ScriptedModelAdapter([_plan(), ANSWER])
+        adapter = ScriptedModelAdapter([ANSWER])
         runtime = self._runtime(adapter, registry, ReasoningTier.FAST)
         request = AgentRequest(goal="What is the capital of France?", agent_profile_id="researcher")
         try:
@@ -84,8 +83,8 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         except RuntimeExecutionError as exc:
             self.fail(f"FAST tier run failed instead of completing: {exc.__cause__!r}")
         self.assertEqual(response.status.value, "completed")
+        self.assertEqual(len(adapter.requests), 1, "FAST must make exactly one model call")
 
-    @unittest.expectedFailure
     async def test_file_reader_output_becomes_citable_evidence(self) -> None:
         # Defect: evidence bundle only accepts calculator and file-search results.
         with tempfile.TemporaryDirectory() as documents:
@@ -108,7 +107,6 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         bundle = build_evidence_bundle([request], [result])
         self.assertGreaterEqual(bundle.evidence_count, 1)
 
-    @unittest.expectedFailure
     async def test_step_with_failed_tool_is_not_marked_completed(self) -> None:
         # Defect: every plan step is set to COMPLETED regardless of tool outcomes.
         registry = ToolRegistry()
@@ -129,7 +127,7 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(record.tool_results[0].success, "precondition: tool must fail")
         self.assertNotEqual(record.plan.steps[0].status, StepStatus.COMPLETED)
 
-    @unittest.expectedFailure
+    @unittest.expectedFailure  # fixed in step 6 (pre-flight token budget)
     async def test_over_budget_prompt_is_rejected_before_the_model_call(self) -> None:
         # Defect: token budgets are checked only after the model has been called and paid for.
         policy = RoutingPolicy(
@@ -163,6 +161,43 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
             failed = True
         self.assertEqual(len(adapter.requests), 0, "model was called with an over-budget prompt")
         self.assertTrue(failed, "over-budget run must fail safely")
+
+
+class RoutingPolicyFlagTests(unittest.IsolatedAsyncioTestCase):
+    async def test_revision_disabled_policy_makes_no_correction_calls(self) -> None:
+        policy = RoutingPolicy(
+            tier=ReasoningTier.STANDARD,
+            budget=BudgetPolicy(
+                max_model_calls=5, max_tool_calls=4, max_output_tokens=4096, max_wallclock_seconds=60.0
+            ),
+            allow_tools=True,
+            allow_retrieval=True,
+            allow_critique=False,
+            allow_revision=False,
+            native_thinking=False,
+            description="no revision probe",
+        )
+        registry = ToolRegistry()
+        registry.register(Calculator())
+        adapter = ScriptedModelAdapter([_plan(), ANSWER])  # plan omits the required tool
+        with tempfile.TemporaryDirectory() as temporary:
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(temporary) / "logs"),
+                enable_model_critique=False,
+                routing_policy=policy,
+            )
+            from agi_contracts import TaskRequirements
+
+            await runtime.run(
+                AgentRequest(goal="Compute 2 + 2.", agent_profile_id="researcher"),
+                _profile(["calculator"], ["calculator.execute"]),
+                requirements=TaskRequirements(required_capabilities=["calculator"]),
+            )
+        phases = [request.metadata["phase"] for request in adapter.requests]
+        self.assertEqual(phases, ["plan", "answer"])
 
 
 class DenialTimestampRegressionTests(unittest.TestCase):

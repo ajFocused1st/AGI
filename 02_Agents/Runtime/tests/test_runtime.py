@@ -1075,13 +1075,14 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
                     tier=ReasoningTier.STANDARD,
                     budget=BudgetPolicy(
                         max_model_calls=1,
-                        max_tool_calls=0,
+                        max_tool_calls=1,
                         max_input_tokens=4096,
                         max_output_tokens=512,
                         max_total_tokens=4608,
                         max_wallclock_seconds=20,
                     ),
-                    allow_tools=False,
+                    # Tool-enabled: plan + answer needs 2 calls, exceeding the budget of 1.
+                    allow_tools=True,
                     allow_retrieval=False,
                     allow_critique=False,
                     allow_revision=False,

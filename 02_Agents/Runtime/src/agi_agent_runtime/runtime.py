@@ -112,15 +112,23 @@ class AgentRuntime:
         plan_requirement_results: list[PlanRequirementResult] = []
         response_requirement_results: list[ResponseRequirementResult] = []
         governor = BudgetGovernor(self._routing_policy)
+        allow_revision = self._routing_policy.allow_revision
 
         try:
-            plan, tool_call_drafts, plan_usage, plan_telemetry = await self._create_plan(
-                run_id, request, profile, requirements=requirements, governor=governor
-            )
+            if self._routing_policy.allow_tools:
+                plan, tool_call_drafts, plan_usage, plan_telemetry = await self._create_plan(
+                    run_id, request, profile, requirements=requirements, governor=governor
+                )
+            else:
+                # Tool-free tiers (FAST) answer directly: a host-owned one-step plan, no plan call.
+                plan = TaskPlan(
+                    goal=request.goal,
+                    steps=[TaskStep(description="Answer directly without tools")],
+                )
+                tool_call_drafts, plan_usage, plan_telemetry = [], ModelUsage(), None
             usage_parts.append(plan_usage)
             if plan_telemetry is not None:
                 model_telemetry.append(plan_telemetry)
-            plan = self._sanitize_plan(plan)
             plan_requirement_result = validate_plan_requirements(
                 requirements,
                 plan,
@@ -135,6 +143,7 @@ class AgentRuntime:
                 tool_requests.extend(blocked_requests)
                 tool_results.extend(blocked_results)
                 decisions.extend(blocked_decisions)
+            if not plan_requirement_result.valid and allow_revision:
                 plan, tool_call_drafts, correction_usage, correction_telemetry = await self._create_plan(
                     run_id,
                     request,
@@ -146,7 +155,6 @@ class AgentRuntime:
                 usage_parts.append(correction_usage)
                 if correction_telemetry is not None:
                     model_telemetry.append(correction_telemetry)
-                plan = self._sanitize_plan(plan)
                 plan_requirement_result = validate_plan_requirements(
                     requirements,
                     plan,
@@ -258,7 +266,7 @@ class AgentRuntime:
                 + verification_failures,
             )
             response_requirement_results.append(response_requirement_result)
-            if not response_requirement_result.valid:
+            if not response_requirement_result.valid and allow_revision:
                 answer_draft, correction_usage, correction_telemetry = (
                     await self._create_answer(
                         run_id=run_id,
@@ -653,7 +661,12 @@ class AgentRuntime:
             )
             for step in proposed.steps
         ]
-        tool_calls = _executable_tool_calls(proposed.tool_calls)
+        tool_calls = [
+            call.model_copy(
+                update={"related_step_id": _step_index(call.related_step_id, proposed.steps)}
+            )
+            for call in _executable_tool_calls(proposed.tool_calls)
+        ]
         return (
             TaskPlan(goal=request.goal, steps=normalized_steps),
             tool_calls,
@@ -662,16 +675,6 @@ class AgentRuntime:
                 phase, model_response.raw_metadata,
             ),
         )
-
-    @staticmethod
-    def _sanitize_plan(plan: TaskPlan) -> TaskPlan:
-        steps = [
-            _without_invalid_calculator(step)
-            if step.tool_name == "calculator"
-            else step
-            for step in plan.steps
-        ]
-        return plan.model_copy(update={"steps": steps})
 
     @staticmethod
     def _blocked_plan_proposals(
@@ -765,7 +768,7 @@ class AgentRuntime:
         decisions = []
         steps: list[TaskStep] = []
         tool_call_count = 0
-        steps = [step.model_copy(update={"status": StepStatus.COMPLETED}) for step in plan.steps]
+        failed_steps: set[int] = set()
         for proposal in tool_calls:
             if tool_call_count >= profile.max_tool_calls:
                 break
@@ -783,6 +786,17 @@ class AgentRuntime:
             )
             decisions.append(decision)
             results.append(result)
+            if not result.success and isinstance(proposal.related_step_id, int):
+                failed_steps.add(proposal.related_step_id)
+        # Steps without a linked tool call are descriptive and complete with the answer.
+        steps = [
+            step.model_copy(
+                update={
+                    "status": StepStatus.FAILED if index in failed_steps else StepStatus.COMPLETED
+                }
+            )
+            for index, step in enumerate(plan.steps)
+        ]
         return plan.model_copy(update={"steps": steps}), requests, results, decisions
 
     async def _validate_tool_calls(
@@ -809,7 +823,10 @@ class AgentRuntime:
             if definition is None:
                 continue
             initial = validate_tool_arguments(definition, proposal.arguments, requirements)
-            if not initial.valid and proposal.tool_name not in requirements.required_capabilities:
+            if not initial.valid and (
+                proposal.tool_name not in requirements.required_capabilities
+                or not self._routing_policy.allow_revision
+            ):
                 histories.append(
                     ToolArgumentRepairHistory(
                         tool_name=proposal.tool_name,
@@ -921,6 +938,7 @@ class AgentRuntime:
         repaired = ToolCallDraft.model_validate(response.structured_output)
         if repaired.tool_name != proposal.tool_name:
             raise ValueError("tool argument repair changed the tool name")
+        repaired = repaired.model_copy(update={"related_step_id": proposal.related_step_id})
         return repaired, response.usage, _model_telemetry(
             "tool_argument_repair", response.raw_metadata
         )
@@ -1080,33 +1098,6 @@ class AgentRuntime:
                 None,
                 None,
             )
-
-    @staticmethod
-    def _evidence_from_results(results: list[ToolResult]) -> list[EvidenceReference]:
-        evidence: list[EvidenceReference] = []
-        for result in results:
-            matches = result.output.get("matches") if result.success else None
-            if not isinstance(matches, list):
-                continue
-            for match in matches:
-                if not isinstance(match, dict):
-                    continue
-                try:
-                    line_start = int(match.get("line_start", match.get("line_number", 1)))
-                    line_end = int(match.get("line_end", line_start))
-                    evidence.append(
-                        EvidenceReference(
-                            source_id=str(match["source_id"]),
-                            source_path=str(match["relative_path"]),
-                            locator=f"lines {line_start}-{line_end}",
-                            excerpt=str(match["snippet"]),
-                            content_sha256=match.get("content_sha256"),
-                            metadata={"root_label": str(match.get("root_label", "documents"))},
-                        )
-                    )
-                except (KeyError, TypeError, ValueError):
-                    continue
-        return evidence
 
     @staticmethod
     def _references_from_bundle(bundle: Any) -> list[EvidenceReference]:
@@ -1295,6 +1286,21 @@ class AgentRuntime:
         )
 
 
+def _step_index(related: str | int | None, steps: list[Any]) -> int | None:
+    """Map a model's related_step_id to a 0-based step index, or None if unresolvable."""
+
+    if related is None or isinstance(related, bool):
+        return None
+    for index, step in enumerate(steps):
+        if step.step_id is not None and str(step.step_id) == str(related):
+            return index
+    try:
+        number = int(str(related))
+    except ValueError:
+        return None
+    return number - 1 if 1 <= number <= len(steps) else None
+
+
 def _executable_tool_calls(tool_calls: list[ToolCallDraft]) -> list[ToolCallDraft]:
     return [
         tool_call
@@ -1444,27 +1450,6 @@ def _sha256_json(value: Any) -> str:
         allow_nan=False,
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _without_invalid_calculator(step: TaskStep) -> TaskStep:
-    expression = step.tool_arguments.get("expression")
-    if isinstance(expression, str) and _looks_like_arithmetic(expression):
-        return step
-    return step.model_copy(
-        update={
-            "description": f"Skip invalid calculator proposal: {step.description}",
-            "tool_name": None,
-            "tool_arguments": {},
-            "success_criteria": "Invalid calculator proposal was not dispatched.",
-        }
-    )
-
-
-def _looks_like_arithmetic(expression: str) -> bool:
-    if not expression.strip():
-        return False
-    allowed = frozenset("0123456789.+-*/%() \t")
-    return all(character in allowed for character in expression)
 
 
 def _model_telemetry(phase: str, raw_metadata: dict[str, Any]) -> dict[str, Any] | None:

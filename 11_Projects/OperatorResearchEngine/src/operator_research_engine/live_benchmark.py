@@ -308,9 +308,7 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
     denied = [decision for decision in record.permission_decisions if not decision.allowed]
     approved = [decision for decision in record.permission_decisions if decision.allowed]
     invalid_tool_proposals = sum(
-        1
-        for step in (record.plan.steps if record.plan is not None else [])
-        if step.description.startswith("Skip invalid")
+        1 for history in record.tool_argument_histories if not history.validation_result.valid
     )
     unsafe_action_denied = any(
         decision.tool_name == "delete_file" and not decision.allowed
