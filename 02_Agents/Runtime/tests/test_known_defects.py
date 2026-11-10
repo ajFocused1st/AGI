@@ -231,6 +231,70 @@ class RoutingPolicyFlagTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(phases, ["plan", "answer"])
 
 
+class HostRequiredRetrievalTests(unittest.IsolatedAsyncioTestCase):
+    async def _run(self, plan_reply: ScriptedReply, requirements) -> tuple:
+        from agi_contracts import RunRecord
+        from agi_tools import ReadOnlyFileSearch, ReadOnlyFileSearchConfig
+
+        with tempfile.TemporaryDirectory() as documents, tempfile.TemporaryDirectory() as logs:
+            Path(documents, "notes.md").write_text(
+                "# Kestrel Pump\n\n[K1] The Kestrel pump was serviced on 2024-06-01.\n", encoding="utf-8"
+            )
+            registry = ToolRegistry()
+            registry.register(
+                ReadOnlyFileSearch(
+                    ReadOnlyFileSearchConfig(roots=(SearchRoot(label="documents1", path=Path(documents)),))
+                )
+            )
+            adapter = ScriptedModelAdapter([plan_reply, plan_reply, ANSWER, ANSWER])
+            runtime = AgentRuntime(
+                model_adapter=adapter,
+                tool_executor=registry,
+                evaluator=RuleBasedEvaluator(),
+                run_store=AtomicJsonRunStore(Path(logs) / "logs"),
+                enable_model_critique=False,
+            )
+            try:
+                response = await runtime.run(
+                    AgentRequest(goal="When was the Kestrel pump serviced?", agent_profile_id="researcher"),
+                    _profile(["read_only_file_search"], ["filesystem.search.readonly"], [documents]),
+                    requirements=requirements,
+                )
+                run_id = response.run_id
+            except RuntimeExecutionError as exc:
+                run_id = exc.run_id
+            record = RunRecord.model_validate_json(
+                (Path(logs) / "logs" / str(run_id) / "run.json").read_text(encoding="utf-8")
+            )
+        return record, adapter
+
+    async def test_host_runs_required_search_the_model_omitted(self) -> None:
+        from agi_contracts import TaskRequirements
+
+        record, _ = await self._run(
+            _plan(), TaskRequirements(required_capabilities=["read_only_file_search"])
+        )
+        self.assertFalse(record.plan_requirement_result.valid, "model miss stays recorded")
+        self.assertEqual([request.tool_name for request in record.tool_requests], ["read_only_file_search"])
+        self.assertEqual(
+            record.metadata["host_actions"],
+            [{"action": "host_required_retrieval", "tool_name": "read_only_file_search"}],
+        )
+        self.assertGreaterEqual(record.evidence_bundle.evidence_count, 1)
+
+    async def test_no_host_search_when_the_plan_proposed_a_forbidden_tool(self) -> None:
+        from agi_contracts import TaskRequirements
+
+        record, _ = await self._run(
+            _plan({"tool_name": "delete_file", "arguments": {"path": "notes.md"}}),
+            TaskRequirements(
+                required_capabilities=["read_only_file_search"], forbidden_capabilities=["delete_file"]
+            ),
+        )
+        self.assertNotIn("host_actions", record.metadata)
+        self.assertNotIn("read_only_file_search", [request.tool_name for request in record.tool_requests])
+
+
 class DenialTimestampRegressionTests(unittest.TestCase):
     """Fixed in step 3: denial results could predate their decision (~0.1% of records)."""
 

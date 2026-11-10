@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import math
 import os
 import re
 import stat
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import perf_counter
 from typing import Any
 
@@ -215,16 +216,13 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
     def _search_sync(self, tool_input: ReadOnlyFileSearchInput) -> FileSearchOutput:
         deadline = perf_counter() + self.timeout_seconds
         effective_limit = min(tool_input.max_matches, self.config.max_matches)
-        needle = tool_input.query if self.config.case_sensitive else tool_input.query.casefold()
-        query_terms = _query_terms(tool_input.query, case_sensitive=self.config.case_sensitive)
-        generic_query = _is_generic_document_query(query_terms)
-        matches: list[FileSearchMatch] = []
-        fallback_matches: list[FileSearchMatch] = []
+        documents: list[_ScannedDocument] = []
         scanned_files = 0
         skipped_entries = 0
         directories_scanned = 0
         truncated = False
 
+        # Traversal and every file-safety check are unchanged; only matching moved below.
         for root in self._roots:
             pending_directories = [root.path]
             while pending_directories:
@@ -295,54 +293,14 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
                         continue
                     content, content_sha256 = file_content
                     scanned_files += 1
-
-                    relative_path = safe_candidate.relative_to(root.path).as_posix()
-                    for line_number, line in enumerate(content.splitlines(), start=1):
-                        haystack = line if self.config.case_sensitive else line.casefold()
-                        location = haystack.find(needle)
-                        term_match = _line_matches_terms(haystack, query_terms)
-                        generic_match = generic_query and line.strip()
-                        if location < 0 and not term_match and not generic_match:
-                            fallback_location = _partial_term_location(haystack, query_terms)
-                            if fallback_location >= 0 and len(fallback_matches) < effective_limit:
-                                fallback_matches.append(
-                                    FileSearchMatch(
-                                        source_id=f"{root.label}:{relative_path}",
-                                        root_label=root.label,
-                                        relative_path=relative_path,
-                                        content_sha256=content_sha256,
-                                        line_start=line_number,
-                                        line_end=line_number,
-                                        line_number=line_number,
-                                        snippet=self._snippet(
-                                            line, fallback_location, len(tool_input.query)
-                                        ),
-                                    )
-                                )
-                            continue
-                        if location < 0 and query_terms:
-                            location = _first_term_location(haystack, query_terms)
-                        matches.append(
-                            FileSearchMatch(
-                                source_id=f"{root.label}:{relative_path}",
-                                root_label=root.label,
-                                relative_path=relative_path,
-                                content_sha256=content_sha256,
-                                line_start=line_number,
-                                line_end=line_number,
-                                line_number=line_number,
-                                snippet=self._snippet(line, location, len(tool_input.query)),
-                            )
+                    documents.append(
+                        _ScannedDocument(
+                            root_label=root.label,
+                            relative_path=safe_candidate.relative_to(root.path).as_posix(),
+                            content_sha256=content_sha256,
+                            lines=content.splitlines(),
                         )
-                        if len(matches) >= effective_limit:
-                            truncated = True
-                            return FileSearchOutput(
-                                query=tool_input.query,
-                                matches=matches,
-                                scanned_files=scanned_files,
-                                skipped_entries=skipped_entries,
-                                truncated=truncated,
-                            )
+                    )
 
                 if truncated:
                     break
@@ -352,12 +310,28 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             if truncated:
                 break
 
+        ranked, more_available = _rank_lines(
+            documents, tool_input.query, limit=effective_limit, case_sensitive=self.config.case_sensitive
+        )
+        matches = [
+            FileSearchMatch(
+                source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
+                root_label=unit.document.root_label,
+                relative_path=unit.document.relative_path,
+                content_sha256=unit.document.content_sha256,
+                line_start=unit.line_number,
+                line_end=unit.line_number,
+                line_number=unit.line_number,
+                snippet=self._snippet(unit.text, unit.match_location, len(tool_input.query)),
+            )
+            for unit in ranked
+        ]
         return FileSearchOutput(
             query=tool_input.query,
-            matches=matches or fallback_matches,
+            matches=matches,
             scanned_files=scanned_files,
             skipped_entries=skipped_entries,
-            truncated=truncated,
+            truncated=truncated or more_available,
         )
 
     def _prepare_roots(self, roots: tuple[SearchRoot, ...]) -> tuple[_PreparedRoot, ...]:
@@ -516,46 +490,191 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             return False
 
 
-def _query_terms(query: str, *, case_sensitive: bool) -> tuple[str, ...]:
-    text = query if case_sensitive else query.casefold()
+@dataclass(frozen=True, slots=True)
+class _ScannedDocument:
+    root_label: str
+    relative_path: str
+    content_sha256: str
+    lines: list[str]
+
+
+@dataclass(slots=True)
+class _LineUnit:
+    document: _ScannedDocument
+    line_number: int
+    text: str
+    line_terms: list[str]
+    context_terms: set[str]
+    document_terms: set[str]
+    coverage: int = 0
+    score: float = 0.0
+    match_location: int = 0
+
+
+# Words that carry no retrieval signal in natural-language questions and instructions.
+_INSTRUCTION_WORDS = frozenset(
+    "after against before below beside beyond during per since through toward under until "
+    "upon via within without "
+    "about all also and any are cite cited citing did does doing done from give how into "
+    "its many much only please show source sources supporting tell than that the their them "
+    "then there these this those using use was were what when where which while who whom "
+    "whose why will with".split()
+)
+# Corpus-level words: on their own they ask for an overview rather than a fact.
+_GENERIC_TERMS = frozenset(
+    "available content contents document documents file files local overview".split()
+)
+_SUMMARY_INTENT = frozenset("summarize summarise summary summaries overview".split())
+# Comparisons need breadth: each side's facts rarely repeat every query term.
+_COMPARE_INTENT = frozenset("compare comparing comparison contrast versus vs difference differences between".split())
+_BM25_K1 = 1.2
+_BM25_B = 0.75
+_CONTEXT_WEIGHT = 0.5
+
+
+def _tokens(text: str) -> list[str]:
+    return [token for token in re.findall(r"[a-z0-9]+", text.casefold()) if len(token) >= 2]
+
+
+def _query_profile(query: str) -> tuple[list[str], bool, bool]:
+    """Stemmed content terms (ordered, unique), overview intent, and comparison intent."""
+
+    raw = _tokens(query)
+    summary_intent = any(token in _SUMMARY_INTENT for token in raw)
+    compare_intent = any(token in _COMPARE_INTENT for token in raw)
     terms = [
-        term
-        for term in re.findall(r"[A-Za-z0-9]+", text)
-        if len(term) >= 2 and term not in QUERY_STOPWORDS
+        _stem(token)
+        for token in raw
+        if token not in QUERY_STOPWORDS
+        and token not in _INSTRUCTION_WORDS
+        and token not in _GENERIC_TERMS
+        and token not in _SUMMARY_INTENT
+        and token not in _COMPARE_INTENT
     ]
-    return tuple(dict.fromkeys(terms))
+    return list(dict.fromkeys(terms)), summary_intent, compare_intent
 
 
-def _line_matches_terms(haystack: str, query_terms: tuple[str, ...]) -> bool:
-    if not query_terms:
-        return False
-    line_terms = re.findall(r"[A-Za-z0-9]+", haystack)
-    return all(
-        any(
-            line_term == query_term
-            or line_term.startswith(query_term)
-            or query_term.startswith(line_term)
-            or _stem(line_term) == _stem(query_term)
-            for line_term in line_terms
-        )
-        for query_term in query_terms
-    )
+def _rank_lines(
+    documents: list[_ScannedDocument],
+    query: str,
+    *,
+    limit: int,
+    case_sensitive: bool,
+) -> tuple[list[_LineUnit], bool]:
+    """Top-coverage tier of lines, ordered by BM25 with heading and file-name context.
+
+    Coverage is the number of distinct query terms present in a line or its document
+    context (nearest markdown heading and file name), so a fact line such as "The trial
+    completed in 3 hours." under "# Project Beacon" still matches a Beacon query. Only the
+    highest-coverage tier is returned: specific questions yield the best line, while
+    multi-fact queries keep every line that covers as many terms.
+    """
+
+    units = _line_units(documents)
+    terms, summary_intent, compare_intent = _query_profile(query)
+    if not terms:
+        return units[:limit], len(units) > limit
+    term_set = set(terms)
+    document_frequency = {
+        term: sum(1 for unit in units if term in unit.context_terms or term in unit.line_terms)
+        for term in term_set
+    }
+    total = max(1, len(units))
+    average_length = sum(len(unit.line_terms) for unit in units) / total or 1.0
+    needle = query if case_sensitive else query.casefold()
+    for unit in units:
+        line_counts: dict[str, int] = {}
+        for token in unit.line_terms:
+            line_counts[token] = line_counts.get(token, 0) + 1
+        present = {term for term in term_set if term in line_counts or term in unit.context_terms}
+        unit.coverage = len(present)
+        length_norm = 1 - _BM25_B + _BM25_B * len(unit.line_terms) / average_length
+        score = 0.0
+        for term in present:
+            frequency = line_counts.get(term, 0) + (_CONTEXT_WEIGHT if term in unit.context_terms else 0.0)
+            df = document_frequency[term]
+            idf = math.log(1 + (total - df + 0.5) / (df + 0.5))
+            score += idf * frequency * (_BM25_K1 + 1) / (frequency + _BM25_K1 * length_norm)
+        haystack = unit.text if case_sensitive else unit.text.casefold()
+        if len(needle) >= 3 and needle in haystack:
+            score += 1.0  # literal phrase bonus
+        unit.score = score
+        unit.match_location = _first_location(haystack, terms)
+    best = max((unit.coverage for unit in units), default=0)
+    if best == 0:
+        # Nothing matches: an overview request gets document lines; a fact question gets none.
+        return (units[:limit], len(units) > limit) if summary_intent else ([], False)
+    if compare_intent:
+        compared = _comparison_lines(units, term_set)
+        if compared:
+            return compared[:limit], len(compared) > limit
+    tier = [unit for unit in units if unit.coverage == best]
+    # Headings are navigation, not facts: rank them after content lines of equal coverage.
+    tier.sort(
+        key=lambda unit: (-unit.coverage, unit.text.lstrip().startswith("#"), -unit.score)
+    )  # stable: ties keep document order
+    return tier[:limit], len(tier) > limit
 
 
-def _partial_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
-    weak_terms = {"details", "document", "documents", "file", "files", "local"}
-    locations = [
-        location
-        for term in query_terms
-        if term not in weak_terms
-        for candidate in (term, _stem(term))
-        if (location := haystack.find(candidate)) >= 0
+def _comparison_lines(units: list[_LineUnit], terms: set[str]) -> list[_LineUnit]:
+    """For comparisons: every content line in a compared subject's documents that states
+    at least one compared attribute.
+
+    Subjects are query terms that name a document (its heading or file name); attributes
+    are the remaining terms. Facts for each side are often spread over short lines that
+    repeat few query terms, so a single coverage tier would drop them.
+    """
+
+    subjects = {term for term in terms if any(term in unit.document_terms for unit in units)}
+    attributes = terms - subjects
+    if len(subjects) < 2 or not attributes:
+        return []
+    selected = [
+        unit
+        for unit in units
+        if unit.document_terms & subjects
+        and set(unit.line_terms) & attributes
+        and not unit.text.lstrip().startswith("#")
     ]
-    return min(locations) if locations else -1
+    selected.sort(key=lambda unit: (-unit.coverage, -unit.score))
+    return selected
 
 
-def _first_term_location(haystack: str, query_terms: tuple[str, ...]) -> int:
-    locations = [haystack.find(term) for term in query_terms if haystack.find(term) >= 0]
+def _line_units(documents: list[_ScannedDocument]) -> list[_LineUnit]:
+    units: list[_LineUnit] = []
+    for document in documents:
+        name_terms = {
+            _stem(token)
+            for token in _tokens(PurePosixPath(document.relative_path).stem)
+            if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
+        }
+        heading_terms: set[str] = set()
+        for line_number, line in enumerate(document.lines, start=1):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            line_terms = [
+                _stem(token)
+                for token in _tokens(stripped)
+                if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
+            ]
+            if stripped.startswith("#"):
+                heading_terms = set(line_terms)
+            units.append(
+                _LineUnit(
+                    document=document,
+                    line_number=line_number,
+                    text=line,
+                    line_terms=line_terms,
+                    context_terms=(heading_terms | name_terms) - set(line_terms),
+                    document_terms=heading_terms | name_terms,
+                )
+            )
+    return units
+
+
+def _first_location(haystack: str, terms: list[str]) -> int:
+    locations = [haystack.find(term) for term in terms if haystack.find(term) >= 0]
     return min(locations) if locations else 0
 
 
@@ -573,16 +692,3 @@ def _stem(term: str) -> str:
                 return term[: -len(suffix)] + "y"
             return term[: -len(suffix)]
     return term
-
-
-def _is_generic_document_query(query_terms: tuple[str, ...]) -> bool:
-    if not query_terms:
-        return False
-    generic_terms = {
-        "document",
-        "documents",
-        "local",
-        "summarize",
-        "summary",
-    }
-    return all(term in generic_terms for term in query_terms)

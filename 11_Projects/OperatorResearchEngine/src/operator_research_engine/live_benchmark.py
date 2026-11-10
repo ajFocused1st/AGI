@@ -365,6 +365,10 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         "status": record.status.value,
         "final_verdict": final_verdict,
         "answer_source": record.answer_source.value if record.answer_source else None,
+        "host_retrieval": any(
+            isinstance(action, dict) and action.get("action") == "host_required_retrieval"
+            for action in record.metadata.get("host_actions", [])
+        ),
         "first_attempt_structured_output_valid": bool(telemetry)
         and all(bool(item.get("first_attempt_valid")) for item in telemetry),
         "repair_attempted": any(bool(item.get("repair_attempted")) for item in telemetry),
@@ -507,6 +511,9 @@ def summarize_attempts(
                 for item in attempts
             ),
             total,
+        ),
+        "host_retrieval_rate": _rate(
+            sum(bool(item.get("host_retrieval")) for item in attempts), total
         ),
         "host_fallback_rate": _rate(
             sum(item.get("answer_source") == "host_fallback" for item in attempts), total
@@ -788,6 +795,7 @@ def _report(summary: dict[str, Any], manifest: dict[str, Any]) -> str:
         f"- Model-authored pass rate (excludes host fallback): "
         f"{summary['model_authored_pass_rate']:.3f}",
         f"- Host fallback rate: {summary['host_fallback_rate']:.3f}",
+        f"- Host-required retrieval rate: {summary['host_retrieval_rate']:.3f}",
         f"- First-attempt structured success: "
         f"{summary['first_attempt_structured_success_rate']:.3f}",
         f"- Repair attempt rate: {summary['repair_attempt_rate']:.3f}",
@@ -868,6 +876,7 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "status",
         "final_verdict",
         "answer_source",
+        "host_retrieval",
         "first_attempt_structured_output_valid",
         "repair_attempted",
         "repair_succeeded",

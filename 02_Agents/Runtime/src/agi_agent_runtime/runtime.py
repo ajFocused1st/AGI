@@ -56,6 +56,9 @@ from .tool_arguments import redact_arguments, validate_tool_arguments
 from .run_store import AtomicJsonRunStore
 
 
+HOST_RETRIEVAL_TOOL = "read_only_file_search"
+
+
 class RuntimeExecutionError(RuntimeError):
     """A safe failure containing the persisted run identifier."""
 
@@ -99,6 +102,7 @@ class _RunState:
     response_requirement_results: list[ResponseRequirementResult] = field(default_factory=list)
     response: AgentResponse | None = None
     evaluation: Any = None
+    host_actions: list[dict[str, Any]] = field(default_factory=list)
 
     def add_model_call(self, usage: ModelUsage, telemetry: dict[str, Any] | None) -> None:
         self.usage_parts.append(usage)
@@ -241,7 +245,15 @@ class AgentRuntime:
             )
             state.add_model_call(usage, telemetry)
             result = self._validate_plan(state, correction_attempted=True)
-        if not result.valid:
+        host_retrieval = self._host_required_retrieval(state, result)
+        if host_retrieval is not None:
+            # The plan stays recorded as invalid (the model's miss); the host performs only
+            # the required read-only search, labelled and auditable.
+            state.tool_call_drafts = [host_retrieval]
+            state.host_actions.append(
+                {"action": "host_required_retrieval", "tool_name": host_retrieval.tool_name}
+            )
+        elif not result.valid:
             state.errors.append(
                 ErrorDetail(
                     code="tool_dispatch_blocked",
@@ -256,6 +268,31 @@ class AgentRuntime:
         recorded_denials = {item.tool_name for item in state.decisions if not item.allowed}
         state.extend_tool_trace(
             *self._policy_denials(set(requirements.forbidden_capabilities) - recorded_denials)
+        )
+
+    def _host_required_retrieval(
+        self, state: _RunState, result: PlanRequirementResult
+    ) -> ToolCallDraft | None:
+        """A goal-derived search when the only plan defect is a missing required search."""
+
+        if (
+            result.valid
+            or result.missing_capabilities != [HOST_RETRIEVAL_TOOL]
+            or result.forbidden_capabilities_proposed
+            or result.unknown_capabilities_proposed
+            or not self._routing_policy.allow_tools
+            or HOST_RETRIEVAL_TOOL not in self._tools.tools
+            or HOST_RETRIEVAL_TOOL not in state.profile.allowed_tools
+            or state.requirements.maximum_tool_calls == 0
+        ):
+            return None
+        query = " ".join(state.request.goal.split())[:200].strip()
+        if not query:
+            return None
+        return ToolCallDraft(
+            tool_name=HOST_RETRIEVAL_TOOL,
+            arguments={"query": query},
+            purpose="host_required_retrieval",
         )
 
     def _validate_plan(
@@ -477,6 +514,14 @@ class AgentRuntime:
             ) from store_error
 
     def _state_record(self, state: _RunState, status: RunStatus) -> RunRecord:
+        record = self._base_record(state, status)
+        if state.host_actions:
+            record = record.model_copy(
+                update={"metadata": {**record.metadata, "host_actions": state.host_actions}}
+            )
+        return record
+
+    def _base_record(self, state: _RunState, status: RunStatus) -> RunRecord:
         assert state.response is not None
         return self._record(
             run_id=state.run_id,

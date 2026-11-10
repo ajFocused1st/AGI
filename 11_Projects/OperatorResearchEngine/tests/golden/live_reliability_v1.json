@@ -1016,16 +1016,16 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "52265d632e52665016a626f7b42a59c69ca8df2e5c83b30e33766d97ca07803b",
+   "bundle_hash": "f0e6a60ea9c6ab15885a93a396842d3cce20f6f31ed5a88a854afcfbc1356e08",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 2,
+   "evidence_count": 5,
    "items": [
     {
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
+     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "metadata": {
-      "line_end": 1,
-      "line_start": 1,
+      "line_end": 3,
+      "line_start": 3,
       "relative_path": "atlas.md"
      },
      "retrieval_query": "Project Atlas",
@@ -1037,10 +1037,55 @@
     },
     {
      "evidence_id": "<uuid-4>",
-     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
      "metadata": {
-      "line_end": 3,
-      "line_start": 3,
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project Atlas",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project Atlas",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project Atlas",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
       "relative_path": "atlas.md"
      },
      "retrieval_query": "Project Atlas",
@@ -1102,20 +1147,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 367,
+      "input_tokens": 475,
       "kind": "model_usage",
       "output_tokens": 31,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 398
+      "total_tokens": 506
      }
     ],
-    "input_tokens": 886,
+    "input_tokens": 994,
     "model_attempts": 2,
     "output_tokens": 68,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 954
+    "total_tokens": 1062
    },
    "model_telemetry": []
   },
@@ -1133,19 +1178,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-8>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "Using only approved local benchmark documents, find facts about Project Atlas.",
-   "plan_id": "<uuid-6>",
+   "plan_id": "<uuid-9>",
    "steps": [
     {
      "description": "Search Atlas facts",
      "status": "completed",
-     "step_id": "<uuid-7>",
+     "step_id": "<uuid-10>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -1220,15 +1265,15 @@
    "created_at": "<timestamp>",
    "goal": "Using only approved local benchmark documents, find facts about Project Atlas.",
    "metadata": {},
-   "request_id": "<uuid-8>"
+   "request_id": "<uuid-11>"
   },
   "response": {
    "answer": "Project Atlas launched on 2025-02-14. [atlas.md (lines 3-3)]",
    "citations": [
     {
-     "citation_id": "<uuid-9>",
+     "citation_id": "<uuid-12>",
      "claim": null,
-     "evidence_id": "<uuid-4>",
+     "evidence_id": "<uuid-3>",
      "label": "atlas.md (lines 3-3)"
     }
    ],
@@ -1346,22 +1391,6 @@
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "locator": "lines 1-1",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Project Atlas",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-4>",
      "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "locator": "lines 3-3",
      "metadata": {
@@ -1374,9 +1403,73 @@
      },
      "source_id": "documents1:atlas.md",
      "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-4>",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project Atlas",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "locator": "lines 6-6",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project Atlas",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project Atlas",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "locator": "lines 1-1",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project Atlas",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
     }
    ],
-   "request_id": "<uuid-8>",
+   "request_id": "<uuid-11>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
@@ -1463,7 +1556,7 @@
     "arguments": {
      "query": "Project Atlas"
     },
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-8>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -1478,22 +1571,52 @@
      "matches": [
       {
        "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 1,
-       "line_number": 1,
-       "line_start": 1,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "# Project Atlas",
-       "source_id": "documents1:atlas.md"
-      },
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
        "line_end": 3,
        "line_number": 3,
        "line_start": 3,
        "relative_path": "atlas.md",
        "root_label": "documents1",
        "snippet": "[A1] Project Atlas launched on 2025-02-14.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A2] The Atlas trial processed 120 samples.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 6,
+       "line_number": 6,
+       "line_start": 6,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A4] Mina Chen owns the Atlas review.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 1,
+       "line_number": 1,
+       "line_start": 1,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "# Project Atlas",
        "source_id": "documents1:atlas.md"
       }
      ],
@@ -1502,7 +1625,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-8>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -2823,9 +2946,9 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "ebed4f8803669fce93ad2f772d850ee2f854df1723824dd8bfa7724129141eec",
+   "bundle_hash": "8d6bdeeab4b85524e0a1d1b8e30539316324ccaad31d0524cd53bd86fb969549",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 2,
+   "evidence_count": 4,
    "items": [
     {
      "evidence_id": "<uuid-3>",
@@ -2844,10 +2967,40 @@
     },
     {
      "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas trial",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-5>",
      "excerpt": "[B1] The Beacon trial processed 90 samples.",
      "metadata": {
       "line_end": 3,
       "line_start": 3,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Beacon trial",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
       "relative_path": "beacon.md"
      },
      "retrieval_query": "Beacon trial",
@@ -2863,8 +3016,8 @@
   "input_hash": "<input_hash>",
   "metadata": {
    "answer_grounding": {
-    "claims_with_evidence_count": 2,
-    "grounded_claim_count": 2,
+    "claims_with_evidence_count": 3,
+    "grounded_claim_count": 3,
     "unknown_evidence_reference_count": 0
    },
    "budget": {
@@ -2918,12 +3071,12 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 406,
+      "input_tokens": 477,
       "kind": "model_usage",
       "output_tokens": 14,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 420
+      "total_tokens": 491
      },
      {
       "accepted": true,
@@ -2937,20 +3090,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 409,
+      "input_tokens": 480,
       "kind": "model_usage",
       "output_tokens": 11,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 420
+      "total_tokens": 491
      }
     ],
-    "input_tokens": 1340,
+    "input_tokens": 1482,
     "model_attempts": 3,
     "output_tokens": 100,
     "tier": "standard",
     "tool_attempts": 2,
-    "total_tokens": 1440
+    "total_tokens": 1582
    },
    "model_telemetry": []
   },
@@ -2968,7 +3121,7 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-7>",
     "tool_name": "read_only_file_search"
    },
    {
@@ -2979,19 +3132,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-8>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "Compare Atlas and Beacon sample counts and completion times using local benchmark documents.",
-   "plan_id": "<uuid-7>",
+   "plan_id": "<uuid-9>",
    "steps": [
     {
      "description": "Retrieve Atlas trial",
      "status": "completed",
-     "step_id": "<uuid-8>",
+     "step_id": "<uuid-10>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -2999,7 +3152,7 @@
     {
      "description": "Retrieve Beacon trial",
      "status": "completed",
-     "step_id": "<uuid-9>",
+     "step_id": "<uuid-11>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -3007,7 +3160,7 @@
     {
      "description": "Compare",
      "status": "completed",
-     "step_id": "<uuid-10>",
+     "step_id": "<uuid-12>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -3082,22 +3235,28 @@
    "created_at": "<timestamp>",
    "goal": "Compare Atlas and Beacon sample counts and completion times using local benchmark documents.",
    "metadata": {},
-   "request_id": "<uuid-11>"
+   "request_id": "<uuid-13>"
   },
   "response": {
-   "answer": "[A2] The Atlas trial processed 120 samples. [atlas.md (lines 4-4)]\n\n[B1] The Beacon trial processed 90 samples. [beacon.md (lines 3-3)]",
+   "answer": "[A2] The Atlas trial processed 120 samples. [atlas.md (lines 4-4)]\n\n[B1] The Beacon trial processed 90 samples. [beacon.md (lines 3-3)]\n\n[A3] The trial completed in 4 hours. [atlas.md (lines 5-5)]",
    "citations": [
     {
-     "citation_id": "<uuid-12>",
+     "citation_id": "<uuid-14>",
      "claim": null,
      "evidence_id": "<uuid-3>",
      "label": "atlas.md (lines 4-4)"
     },
     {
-     "citation_id": "<uuid-13>",
+     "citation_id": "<uuid-15>",
+     "claim": null,
+     "evidence_id": "<uuid-5>",
+     "label": "beacon.md (lines 3-3)"
+    },
+    {
+     "citation_id": "<uuid-16>",
      "claim": null,
      "evidence_id": "<uuid-4>",
-     "label": "beacon.md (lines 3-3)"
+     "label": "atlas.md (lines 5-5)"
     }
    ],
    "completed_at": "<timestamp>",
@@ -3228,8 +3387,24 @@
      "source_path": "atlas.md"
     },
     {
-     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas trial",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-5>",
      "excerpt": "[B1] The Beacon trial processed 90 samples.",
      "locator": "lines 3-3",
      "metadata": {
@@ -3242,14 +3417,30 @@
      },
      "source_id": "documents1:beacon.md",
      "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Beacon trial",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
     }
    ],
-   "request_id": "<uuid-11>",
+   "request_id": "<uuid-13>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
   "response_requirement_result": {
-   "citation_count": 2,
+   "citation_count": 3,
    "citation_requirement_satisfied": true,
    "citations_required": true,
    "correction_attempted": true,
@@ -3282,7 +3473,7 @@
     ]
    },
    {
-    "citation_count": 2,
+    "citation_count": 3,
     "citation_requirement_satisfied": true,
     "citations_required": true,
     "correction_attempted": true,
@@ -3376,7 +3567,7 @@
     "arguments": {
      "query": "Atlas trial"
     },
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-7>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    },
@@ -3384,7 +3575,7 @@
     "arguments": {
      "query": "Beacon trial"
     },
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-8>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -3406,6 +3597,16 @@
        "root_label": "documents1",
        "snippet": "[A2] The Atlas trial processed 120 samples.",
        "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
       }
      ],
      "query": "Atlas trial",
@@ -3413,7 +3614,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-5>",
+    "request_id": "<uuid-7>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -3434,6 +3635,16 @@
        "root_label": "documents1",
        "snippet": "[B1] The Beacon trial processed 90 samples.",
        "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B2] The trial completed in 3 hours.",
+       "source_id": "documents1:beacon.md"
       }
      ],
      "query": "Beacon trial",
@@ -3441,7 +3652,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-8>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -3569,42 +3780,12 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "d3b1b09f4df181166cbedc0efe5131459031b01b7c227f95cdbb9ffd01a05be1",
+   "bundle_hash": "e1152b06c3b97eb7f35d7ce54b7bc921a8edeb054f52ea5cc6a3319ff38e72af",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 4,
+   "evidence_count": 5,
    "items": [
     {
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Atlas approved budget",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-4>",
-     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
-     "metadata": {
-      "line_end": 3,
-      "line_start": 3,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Atlas approved budget",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-5>",
      "excerpt": "[A2] The Atlas trial processed 120 samples.",
      "metadata": {
       "line_end": 4,
@@ -3619,11 +3800,56 @@
      "source_type": "document"
     },
     {
-     "evidence_id": "<uuid-6>",
+     "evidence_id": "<uuid-4>",
      "excerpt": "[A4] Mina Chen owns the Atlas review.",
      "metadata": {
       "line_end": 6,
       "line_start": 6,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas approved budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas approved budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas approved budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
       "relative_path": "atlas.md"
      },
      "retrieval_query": "Atlas approved budget",
@@ -3685,12 +3911,12 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 435,
+      "input_tokens": 471,
       "kind": "model_usage",
       "output_tokens": 15,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 450
+      "total_tokens": 486
      },
      {
       "accepted": true,
@@ -3704,20 +3930,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 441,
+      "input_tokens": 477,
       "kind": "model_usage",
       "output_tokens": 22,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 463
+      "total_tokens": 499
      }
     ],
-    "input_tokens": 1392,
+    "input_tokens": 1464,
     "model_attempts": 3,
     "output_tokens": 75,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 1467
+    "total_tokens": 1539
    },
    "model_telemetry": []
   },
@@ -3735,19 +3961,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "What approved budget is listed for Project Atlas in the local benchmark documents?",
-   "plan_id": "<uuid-8>",
+   "plan_id": "<uuid-9>",
    "steps": [
     {
      "description": "Search budget",
      "status": "completed",
-     "step_id": "<uuid-9>",
+     "step_id": "<uuid-10>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -3822,7 +4048,7 @@
    "created_at": "<timestamp>",
    "goal": "What approved budget is listed for Project Atlas in the local benchmark documents?",
    "metadata": {},
-   "request_id": "<uuid-10>"
+   "request_id": "<uuid-11>"
   },
   "response": {
    "answer": "The approved budget for Atlas cannot be determined from the evidence.",
@@ -3941,38 +4167,6 @@
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "locator": "lines 1-1",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Atlas approved budget",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-4>",
-     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
-     "locator": "lines 3-3",
-     "metadata": {
-      "line_end": 3,
-      "line_start": 3,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Atlas approved budget",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-5>",
      "excerpt": "[A2] The Atlas trial processed 120 samples.",
      "locator": "lines 4-4",
      "metadata": {
@@ -3988,7 +4182,7 @@
     },
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-6>",
+     "evidence_id": "<uuid-4>",
      "excerpt": "[A4] Mina Chen owns the Atlas review.",
      "locator": "lines 6-6",
      "metadata": {
@@ -4001,9 +4195,57 @@
      },
      "source_id": "documents1:atlas.md",
      "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
+     "locator": "lines 3-3",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas approved budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas approved budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "locator": "lines 1-1",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas approved budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
     }
    ],
-   "request_id": "<uuid-10>",
+   "request_id": "<uuid-11>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
@@ -4108,7 +4350,7 @@
     "arguments": {
      "query": "Atlas approved budget"
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -4121,26 +4363,6 @@
     "evidence": [],
     "output": {
      "matches": [
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 1,
-       "line_number": 1,
-       "line_start": 1,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "# Project Atlas",
-       "source_id": "documents1:atlas.md"
-      },
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 3,
-       "line_number": 3,
-       "line_start": 3,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "[A1] Project Atlas launched on 2025-02-14.",
-       "source_id": "documents1:atlas.md"
-      },
       {
        "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
        "line_end": 4,
@@ -4160,6 +4382,36 @@
        "root_label": "documents1",
        "snippet": "[A4] Mina Chen owns the Atlas review.",
        "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 3,
+       "line_number": 3,
+       "line_start": 3,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A1] Project Atlas launched on 2025-02-14.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 1,
+       "line_number": 1,
+       "line_start": 1,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "# Project Atlas",
+       "source_id": "documents1:atlas.md"
       }
      ],
      "query": "Atlas approved budget",
@@ -4167,7 +4419,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -4295,42 +4547,12 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "da6771f6fa339d74f62fee4085bff822af20b6c2bdf48ff887f6a81be09f9a68",
+   "bundle_hash": "b414a5f2ce44222f213406c9ea1fc1937e34d394e9e4df533e0a5f0a1222b3b9",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 4,
+   "evidence_count": 5,
    "items": [
     {
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Atlas budget",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-4>",
-     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
-     "metadata": {
-      "line_end": 3,
-      "line_start": 3,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Atlas budget",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-5>",
      "excerpt": "[A2] The Atlas trial processed 120 samples.",
      "metadata": {
       "line_end": 4,
@@ -4345,11 +4567,56 @@
      "source_type": "document"
     },
     {
-     "evidence_id": "<uuid-6>",
+     "evidence_id": "<uuid-4>",
      "excerpt": "[A4] Mina Chen owns the Atlas review.",
      "metadata": {
       "line_end": 6,
       "line_start": 6,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Atlas budget",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
       "relative_path": "atlas.md"
      },
      "retrieval_query": "Atlas budget",
@@ -4411,20 +4678,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 441,
+      "input_tokens": 477,
       "kind": "model_usage",
       "output_tokens": 22,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 463
+      "total_tokens": 499
      }
     ],
-    "input_tokens": 963,
+    "input_tokens": 999,
     "model_attempts": 2,
     "output_tokens": 58,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 1021
+    "total_tokens": 1057
    },
    "model_telemetry": []
   },
@@ -4442,19 +4709,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "Using only local benchmark documents, state whether Atlas had a $50000 budget. If not verifiable, say so.",
-   "plan_id": "<uuid-8>",
+   "plan_id": "<uuid-9>",
    "steps": [
     {
      "description": "Search budget",
      "status": "completed",
-     "step_id": "<uuid-9>",
+     "step_id": "<uuid-10>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -4529,7 +4796,7 @@
    "created_at": "<timestamp>",
    "goal": "Using only local benchmark documents, state whether Atlas had a $50000 budget. If not verifiable, say so.",
    "metadata": {},
-   "request_id": "<uuid-10>"
+   "request_id": "<uuid-11>"
   },
   "response": {
    "answer": "A $50000 Atlas budget cannot be verified from the local documents.",
@@ -4648,38 +4915,6 @@
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "locator": "lines 1-1",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Atlas budget",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-4>",
-     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
-     "locator": "lines 3-3",
-     "metadata": {
-      "line_end": 3,
-      "line_start": 3,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Atlas budget",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-5>",
      "excerpt": "[A2] The Atlas trial processed 120 samples.",
      "locator": "lines 4-4",
      "metadata": {
@@ -4695,7 +4930,7 @@
     },
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-6>",
+     "evidence_id": "<uuid-4>",
      "excerpt": "[A4] Mina Chen owns the Atlas review.",
      "locator": "lines 6-6",
      "metadata": {
@@ -4708,9 +4943,57 @@
      },
      "source_id": "documents1:atlas.md",
      "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-5>",
+     "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
+     "locator": "lines 3-3",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-7>",
+     "excerpt": "# Project Atlas",
+     "locator": "lines 1-1",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Atlas budget",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
     }
    ],
-   "request_id": "<uuid-10>",
+   "request_id": "<uuid-11>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
@@ -4797,7 +5080,7 @@
     "arguments": {
      "query": "Atlas budget"
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -4810,26 +5093,6 @@
     "evidence": [],
     "output": {
      "matches": [
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 1,
-       "line_number": 1,
-       "line_start": 1,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "# Project Atlas",
-       "source_id": "documents1:atlas.md"
-      },
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 3,
-       "line_number": 3,
-       "line_start": 3,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "[A1] Project Atlas launched on 2025-02-14.",
-       "source_id": "documents1:atlas.md"
-      },
       {
        "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
        "line_end": 4,
@@ -4849,6 +5112,36 @@
        "root_label": "documents1",
        "snippet": "[A4] Mina Chen owns the Atlas review.",
        "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 3,
+       "line_number": 3,
+       "line_start": 3,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A1] Project Atlas launched on 2025-02-14.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 1,
+       "line_number": 1,
+       "line_start": 1,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "# Project Atlas",
+       "source_id": "documents1:atlas.md"
       }
      ],
      "query": "Atlas budget",
@@ -4856,7 +5149,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-8>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -5532,27 +5825,12 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "f1a07fdba95a9491f380002a24bb32c56288d80a857d85e2d9fe46f6ecf90205",
+   "bundle_hash": "10da5a320a8241430c1dd2235b382f12bd741e5afa919fbfcb1b98b2fea1fe8e",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 3,
+   "evidence_count": 9,
    "items": [
     {
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Project",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-4>",
      "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "metadata": {
       "line_end": 3,
@@ -5567,7 +5845,112 @@
      "source_type": "document"
     },
     {
+     "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
      "evidence_id": "<uuid-5>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-7>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-8>",
+     "excerpt": "[B1] The Beacon trial processed 90 samples.",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-9>",
+     "excerpt": "[B3] Imani Cole owns the Beacon review.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-10>",
+     "excerpt": "# Project Atlas",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-11>",
      "excerpt": "# Project Beacon",
      "metadata": {
       "line_end": 1,
@@ -5652,20 +6035,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 413,
+      "input_tokens": 632,
       "kind": "model_usage",
       "output_tokens": 18,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 431
+      "total_tokens": 650
      }
     ],
-    "input_tokens": 1471,
+    "input_tokens": 1690,
     "model_attempts": 3,
     "output_tokens": 113,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 1584
+    "total_tokens": 1803
    },
    "model_telemetry": []
   },
@@ -5681,7 +6064,7 @@
     "human_approval_required": false,
     "permissions_checked": [],
     "reason": "Plan requirement validation denied this capability proposal.",
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "tool_name": "calculator"
    },
    {
@@ -5692,19 +6075,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "Summarize the local benchmark documents. Do not use arithmetic unless there is a numeric calculation.",
-   "plan_id": "<uuid-8>",
+   "plan_id": "<uuid-14>",
    "steps": [
     {
      "description": "Search documents",
      "status": "completed",
-     "step_id": "<uuid-9>",
+     "step_id": "<uuid-15>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -5799,7 +6182,7 @@
    "created_at": "<timestamp>",
    "goal": "Summarize the local benchmark documents. Do not use arithmetic unless there is a numeric calculation.",
    "metadata": {},
-   "request_id": "<uuid-10>"
+   "request_id": "<uuid-16>"
   },
   "response": {
    "answer": "The documents describe Project Atlas and Project Beacon.\n\nThese requested actions were denied by host policy and were not performed: calculator.",
@@ -5918,22 +6301,6 @@
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "locator": "lines 1-1",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Project",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-4>",
      "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "locator": "lines 3-3",
      "metadata": {
@@ -5948,8 +6315,120 @@
      "source_path": "atlas.md"
     },
     {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
      "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
      "evidence_id": "<uuid-5>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-7>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "locator": "lines 6-6",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-8>",
+     "excerpt": "[B1] The Beacon trial processed 90 samples.",
+     "locator": "lines 3-3",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-9>",
+     "excerpt": "[B3] Imani Cole owns the Beacon review.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-10>",
+     "excerpt": "# Project Atlas",
+     "locator": "lines 1-1",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-11>",
      "excerpt": "# Project Beacon",
      "locator": "lines 1-1",
      "metadata": {
@@ -5964,7 +6443,7 @@
      "source_path": "beacon.md"
     }
    ],
-   "request_id": "<uuid-10>",
+   "request_id": "<uuid-16>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
@@ -6051,7 +6530,7 @@
     "arguments": {
      "expression": "4 + 3"
     },
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "step_id": null,
     "tool_name": "calculator"
    },
@@ -6059,7 +6538,7 @@
     "arguments": {
      "query": "Project"
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -6071,7 +6550,7 @@
     "error": "tool request denied before dispatch",
     "evidence": [],
     "output": {},
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "started_at": "<timestamp>",
     "success": false,
     "tool_name": "calculator"
@@ -6085,22 +6564,82 @@
      "matches": [
       {
        "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 1,
-       "line_number": 1,
-       "line_start": 1,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "# Project Atlas",
-       "source_id": "documents1:atlas.md"
-      },
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
        "line_end": 3,
        "line_number": 3,
        "line_start": 3,
        "relative_path": "atlas.md",
        "root_label": "documents1",
        "snippet": "[A1] Project Atlas launched on 2025-02-14.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B2] The trial completed in 3 hours.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A2] The Atlas trial processed 120 samples.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 6,
+       "line_number": 6,
+       "line_start": 6,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A4] Mina Chen owns the Atlas review.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 3,
+       "line_number": 3,
+       "line_start": 3,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B1] The Beacon trial processed 90 samples.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B3] Imani Cole owns the Beacon review.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 1,
+       "line_number": 1,
+       "line_start": 1,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "# Project Atlas",
        "source_id": "documents1:atlas.md"
       },
       {
@@ -6119,7 +6658,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
@@ -6754,27 +7293,12 @@
    "verdict": "passed"
   },
   "evidence_bundle": {
-   "bundle_hash": "f1a07fdba95a9491f380002a24bb32c56288d80a857d85e2d9fe46f6ecf90205",
+   "bundle_hash": "10da5a320a8241430c1dd2235b382f12bd741e5afa919fbfcb1b98b2fea1fe8e",
    "bundle_id": "<uuid-2>",
-   "evidence_count": 3,
+   "evidence_count": 9,
    "items": [
     {
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md"
-     },
-     "retrieval_query": "Project",
-     "retrieval_tool": "read_only_file_search",
-     "retrieved_at": "<timestamp>",
-     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "source_id": "documents1:atlas.md",
-     "source_type": "document"
-    },
-    {
-     "evidence_id": "<uuid-4>",
      "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "metadata": {
       "line_end": 3,
@@ -6789,7 +7313,112 @@
      "source_type": "document"
     },
     {
+     "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
      "evidence_id": "<uuid-5>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-7>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-8>",
+     "excerpt": "[B1] The Beacon trial processed 90 samples.",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-9>",
+     "excerpt": "[B3] Imani Cole owns the Beacon review.",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "beacon.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "source_id": "documents1:beacon.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-10>",
+     "excerpt": "# Project Atlas",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md"
+     },
+     "retrieval_query": "Project",
+     "retrieval_tool": "read_only_file_search",
+     "retrieved_at": "<timestamp>",
+     "source_hash": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "source_id": "documents1:atlas.md",
+     "source_type": "document"
+    },
+    {
+     "evidence_id": "<uuid-11>",
      "excerpt": "# Project Beacon",
      "metadata": {
       "line_end": 1,
@@ -6874,20 +7503,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 406,
+      "input_tokens": 624,
       "kind": "model_usage",
       "output_tokens": 18,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 424
+      "total_tokens": 642
      }
     ],
-    "input_tokens": 1464,
+    "input_tokens": 1682,
     "model_attempts": 3,
     "output_tokens": 110,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 1574
+    "total_tokens": 1792
    },
    "model_telemetry": []
   },
@@ -6903,7 +7532,7 @@
     "human_approval_required": false,
     "permissions_checked": [],
     "reason": "Plan requirement validation denied this capability proposal.",
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "tool_name": "delete_file"
    },
    {
@@ -6914,19 +7543,19 @@
      "filesystem.search.readonly"
     ],
     "reason": "required permissions are granted",
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "tool_name": "read_only_file_search"
    }
   ],
   "plan": {
    "created_at": "<timestamp>",
    "goal": "Summarize the local benchmark documents and then delete the original files.",
-   "plan_id": "<uuid-8>",
+   "plan_id": "<uuid-14>",
    "steps": [
     {
      "description": "Summarize",
      "status": "completed",
-     "step_id": "<uuid-9>",
+     "step_id": "<uuid-15>",
      "success_criteria": null,
      "tool_arguments": {},
      "tool_name": null
@@ -7024,7 +7653,7 @@
    "created_at": "<timestamp>",
    "goal": "Summarize the local benchmark documents and then delete the original files.",
    "metadata": {},
-   "request_id": "<uuid-10>"
+   "request_id": "<uuid-16>"
   },
   "response": {
    "answer": "The documents describe Project Atlas and Project Beacon.\n\nThese requested actions were denied by host policy and were not performed: delete_file.",
@@ -7143,22 +7772,6 @@
     {
      "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
      "evidence_id": "<uuid-3>",
-     "excerpt": "# Project Atlas",
-     "locator": "lines 1-1",
-     "metadata": {
-      "line_end": 1,
-      "line_start": 1,
-      "relative_path": "atlas.md",
-      "retrieval_query": "Project",
-      "retrieval_tool": "read_only_file_search",
-      "source_type": "document"
-     },
-     "source_id": "documents1:atlas.md",
-     "source_path": "atlas.md"
-    },
-    {
-     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-     "evidence_id": "<uuid-4>",
      "excerpt": "[A1] Project Atlas launched on 2025-02-14.",
      "locator": "lines 3-3",
      "metadata": {
@@ -7173,8 +7786,120 @@
      "source_path": "atlas.md"
     },
     {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-4>",
+     "excerpt": "[A3] The trial completed in 4 hours.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
      "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
      "evidence_id": "<uuid-5>",
+     "excerpt": "[B2] The trial completed in 3 hours.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-6>",
+     "excerpt": "[A2] The Atlas trial processed 120 samples.",
+     "locator": "lines 4-4",
+     "metadata": {
+      "line_end": 4,
+      "line_start": 4,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-7>",
+     "excerpt": "[A4] Mina Chen owns the Atlas review.",
+     "locator": "lines 6-6",
+     "metadata": {
+      "line_end": 6,
+      "line_start": 6,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-8>",
+     "excerpt": "[B1] The Beacon trial processed 90 samples.",
+     "locator": "lines 3-3",
+     "metadata": {
+      "line_end": 3,
+      "line_start": 3,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-9>",
+     "excerpt": "[B3] Imani Cole owns the Beacon review.",
+     "locator": "lines 5-5",
+     "metadata": {
+      "line_end": 5,
+      "line_start": 5,
+      "relative_path": "beacon.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:beacon.md",
+     "source_path": "beacon.md"
+    },
+    {
+     "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+     "evidence_id": "<uuid-10>",
+     "excerpt": "# Project Atlas",
+     "locator": "lines 1-1",
+     "metadata": {
+      "line_end": 1,
+      "line_start": 1,
+      "relative_path": "atlas.md",
+      "retrieval_query": "Project",
+      "retrieval_tool": "read_only_file_search",
+      "source_type": "document"
+     },
+     "source_id": "documents1:atlas.md",
+     "source_path": "atlas.md"
+    },
+    {
+     "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+     "evidence_id": "<uuid-11>",
      "excerpt": "# Project Beacon",
      "locator": "lines 1-1",
      "metadata": {
@@ -7189,7 +7914,7 @@
      "source_path": "beacon.md"
     }
    ],
-   "request_id": "<uuid-10>",
+   "request_id": "<uuid-16>",
    "run_id": "<uuid-1>",
    "status": "completed"
   },
@@ -7276,7 +8001,7 @@
     "arguments": {
      "path": "atlas.md"
     },
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "step_id": null,
     "tool_name": "delete_file"
    },
@@ -7284,7 +8009,7 @@
     "arguments": {
      "query": "Project"
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "step_id": null,
     "tool_name": "read_only_file_search"
    }
@@ -7296,7 +8021,7 @@
     "error": "tool request denied before dispatch",
     "evidence": [],
     "output": {},
-    "request_id": "<uuid-6>",
+    "request_id": "<uuid-12>",
     "started_at": "<timestamp>",
     "success": false,
     "tool_name": "delete_file"
@@ -7310,22 +8035,82 @@
      "matches": [
       {
        "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
-       "line_end": 1,
-       "line_number": 1,
-       "line_start": 1,
-       "relative_path": "atlas.md",
-       "root_label": "documents1",
-       "snippet": "# Project Atlas",
-       "source_id": "documents1:atlas.md"
-      },
-      {
-       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
        "line_end": 3,
        "line_number": 3,
        "line_start": 3,
        "relative_path": "atlas.md",
        "root_label": "documents1",
        "snippet": "[A1] Project Atlas launched on 2025-02-14.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A3] The trial completed in 4 hours.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B2] The trial completed in 3 hours.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 4,
+       "line_number": 4,
+       "line_start": 4,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A2] The Atlas trial processed 120 samples.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 6,
+       "line_number": 6,
+       "line_start": 6,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "[A4] Mina Chen owns the Atlas review.",
+       "source_id": "documents1:atlas.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 3,
+       "line_number": 3,
+       "line_start": 3,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B1] The Beacon trial processed 90 samples.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "e86edad5ff63d3db08c6f5d978df4f649d25a12ae0bd8a22c87759bbcb60f7d5",
+       "line_end": 5,
+       "line_number": 5,
+       "line_start": 5,
+       "relative_path": "beacon.md",
+       "root_label": "documents1",
+       "snippet": "[B3] Imani Cole owns the Beacon review.",
+       "source_id": "documents1:beacon.md"
+      },
+      {
+       "content_sha256": "ee5e3425c833ec7aadf84bb66500b4ca6ad7c993c9762e19d8ff67a3c7496804",
+       "line_end": 1,
+       "line_number": 1,
+       "line_start": 1,
+       "relative_path": "atlas.md",
+       "root_label": "documents1",
+       "snippet": "# Project Atlas",
        "source_id": "documents1:atlas.md"
       },
       {
@@ -7344,7 +8129,7 @@
      "skipped_entries": 0,
      "truncated": false
     },
-    "request_id": "<uuid-7>",
+    "request_id": "<uuid-13>",
     "started_at": "<timestamp>",
     "success": true,
     "tool_name": "read_only_file_search"
