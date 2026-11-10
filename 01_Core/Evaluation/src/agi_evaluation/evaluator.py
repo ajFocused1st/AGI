@@ -338,8 +338,8 @@ class RuleBasedEvaluator:
         if not document_items:
             return True, "No document evidence was cited."
 
-        cited_text = "\n".join(item.excerpt or "" for item in document_items)
-        answer_for_support = _strip_rendered_citations(answer)
+        cited_text = _canonical_dates("\n".join(item.excerpt or "" for item in document_items))
+        answer_for_support = _canonical_dates(_strip_rendered_citations(answer))
         answer_tokens = _concrete_tokens(answer_for_support)
         if not answer_tokens:
             return True, "The answer contains no concrete claim tokens to check."
@@ -350,12 +350,19 @@ class RuleBasedEvaluator:
         missing_entities = sorted(
             _titlecase_terms(answer_for_support) - _titlecase_terms(cited_text)
         )
-        if len(supported) < minimum_overlap or missing_entities:
+        # Dates are high-risk facts: every date in the answer must appear in cited evidence,
+        # regardless of how many other words overlap.
+        unsupported_dates = sorted(
+            set(_ISO_DATE.findall(answer_for_support)) - set(_ISO_DATE.findall(cited_text))
+        )
+        if len(supported) < minimum_overlap or missing_entities or unsupported_dates:
             details = [
                 f"supported concrete terms: {len(supported)}/{len(answer_tokens)}",
             ]
             if missing_entities:
                 details.append("missing cited entities: " + ", ".join(missing_entities))
+            if unsupported_dates:
+                details.append("uncited dates: " + ", ".join(unsupported_dates))
             return False, "; ".join(details)
         return True, "Cited document evidence supports the answer's concrete terms."
 
@@ -555,6 +562,42 @@ def _titlecase_terms(value: str) -> set[str]:
         if term.casefold() not in _STOPWORDS:
             terms.add(term.casefold())
     return terms
+
+
+_MONTHS = {
+    name: index
+    for index, names in enumerate(
+        (
+            ("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"),
+            ("may",), ("june", "jun"), ("july", "jul"), ("august", "aug"),
+            ("september", "sep", "sept"), ("october", "oct"), ("november", "nov"),
+            ("december", "dec"),
+        ),
+        start=1,
+    )
+    for name in names
+}
+_MONTH_PATTERN = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTH_DAY_YEAR = re.compile(
+    rf"\b({_MONTH_PATTERN})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?,?\s+(\d{{4}})\b", re.IGNORECASE
+)
+_DAY_MONTH_YEAR = re.compile(
+    rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({_MONTH_PATTERN})\.?,?\s+(\d{{4}})\b", re.IGNORECASE
+)
+
+
+_ISO_DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+
+
+def _canonical_dates(value: str) -> str:
+    """Rewrite 'February 14, 2025' and '14 February 2025' as '2025-02-14'."""
+
+    def iso(year: str, month: str, day: str) -> str:
+        month_number = _MONTHS[month.casefold()]
+        return f"{year}-{month_number:02d}-{int(day):02d}" if 1 <= int(day) <= 31 else f"{month} {day} {year}"
+
+    value = _MONTH_DAY_YEAR.sub(lambda m: iso(m.group(3), m.group(1), m.group(2)), value)
+    return _DAY_MONTH_YEAR.sub(lambda m: iso(m.group(3), m.group(2), m.group(1)), value)
 
 
 def _strip_rendered_citations(value: str) -> str:

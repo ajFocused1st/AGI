@@ -140,6 +140,10 @@ class AgentRuntime:
             else get_routing_policy(routing_policy or ReasoningTier.STANDARD)
         )
 
+    @property
+    def routing_policy(self) -> RoutingPolicy:
+        return self._routing_policy
+
     async def run(
         self,
         request: AgentRequest,
@@ -533,7 +537,9 @@ class AgentRuntime:
                         "documents, with a plain natural-language query. Use calculator only for concrete "
                         "arithmetic expressions such as '37 * 14'; never use assignments, variables, "
                         "estimates, placeholders, or invented measurements. "
-                        "Satisfy the supplied public task requirements."
+                        "Satisfy the supplied public task requirements: every capability in "
+                        "required_capabilities must appear as a tool_calls entry."
+                        + _plan_correction_instruction(correction)
                     ),
                 ),
                 ModelMessage(
@@ -545,20 +551,6 @@ class AgentRuntime:
                             "max_steps": profile.max_steps,
                             "max_tool_calls": profile.max_tool_calls,
                             "task_requirements": compact_requirements(requirements),
-                            "correction": (
-                                {
-                                    "missing_capabilities": correction.missing_capabilities,
-                                    "forbidden_capabilities_proposed": (
-                                        correction.forbidden_capabilities_proposed
-                                    ),
-                                    "unknown_capabilities_proposed": (
-                                        correction.unknown_capabilities_proposed
-                                    ),
-                                    "validation_messages": correction.validation_messages,
-                                }
-                                if correction is not None
-                                else None
-                            ),
                         },
                         ensure_ascii=False,
                     ),
@@ -1218,6 +1210,29 @@ class AgentRuntime:
                 sum(costs) if costs and all(cost is not None for cost in costs) else None
             ),
         )
+
+
+def _plan_correction_instruction(correction: PlanRequirementResult | None) -> str:
+    """Plain-language fix-up, so small models act on it instead of echoing a JSON object."""
+
+    if correction is None:
+        return ""
+    parts = [" Your previous plan was rejected."]
+    if correction.missing_capabilities:
+        parts.append(
+            " Add a tool_calls entry for each of: "
+            + ", ".join(correction.missing_capabilities)
+            + "."
+        )
+    blocked = sorted(
+        set(correction.forbidden_capabilities_proposed)
+        | set(correction.unknown_capabilities_proposed)
+    )
+    if blocked:
+        parts.append(" Do not propose: " + ", ".join(blocked) + ".")
+    for message in correction.validation_messages[:4]:
+        parts.append(f" ({message[:160]})")
+    return "".join(parts)
 
 
 def _step_index(related: str | int | None, steps: list[Any]) -> int | None:
