@@ -7,7 +7,9 @@ from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from types import MappingProxyType
-from typing import Protocol, TypeAlias
+from typing import Any, Protocol, TypeAlias
+
+from pydantic import ValidationError as PydanticValidationError
 
 from agi_contracts import (
     PermissionDecision,
@@ -75,6 +77,21 @@ class ToolRegistry:
         return MappingProxyType(
             {name: tool.definition for name, tool in sorted(self._tools.items())}
         )
+
+    def validate_arguments(self, name: str, arguments: Mapping[str, Any]) -> list[str]:
+        """Check arguments against the tool's own input model without executing anything."""
+
+        tool = self._tools.get(name)
+        if tool is None:
+            return [f"unknown tool: {name}"]
+        try:
+            tool.input_model.model_validate(dict(arguments))
+        except PydanticValidationError as exc:
+            return [
+                f"{'.'.join(str(part) for part in error['loc']) or 'arguments'}: {error['msg']}"[:200]
+                for error in exc.errors()[:8]
+            ]
+        return []
 
     def register(self, tool: BaseTool) -> None:
         """Register one tool, rejecting ambiguous duplicate names."""

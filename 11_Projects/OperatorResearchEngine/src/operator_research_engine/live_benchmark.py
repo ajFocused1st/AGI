@@ -365,6 +365,7 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         "status": record.status.value,
         "final_verdict": final_verdict,
         "answer_source": record.answer_source.value if record.answer_source else None,
+        "follow_up_rounds": int(record.metadata.get("follow_up_rounds", 0) or 0),
         "host_retrieval": any(
             isinstance(action, dict) and action.get("action") == "host_required_retrieval"
             for action in record.metadata.get("host_actions", [])
@@ -511,6 +512,9 @@ def summarize_attempts(
                 for item in attempts
             ),
             total,
+        ),
+        "follow_up_rate": _rate(
+            sum(bool(item.get("follow_up_rounds")) for item in attempts), total
         ),
         "host_retrieval_rate": _rate(
             sum(bool(item.get("host_retrieval")) for item in attempts), total
@@ -798,6 +802,7 @@ def _report(summary: dict[str, Any], manifest: dict[str, Any]) -> str:
         f"{summary['model_authored_pass_rate']:.3f}",
         f"- Host fallback rate: {summary['host_fallback_rate']:.3f}",
         f"- Host-required retrieval rate: {summary['host_retrieval_rate']:.3f}",
+        f"- Follow-up (observe) rate: {summary['follow_up_rate']:.3f}",
         f"- First-attempt structured success: "
         f"{summary['first_attempt_structured_success_rate']:.3f}",
         f"- Repair attempt rate: {summary['repair_attempt_rate']:.3f}",
@@ -878,6 +883,7 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "status",
         "final_verdict",
         "answer_source",
+        "follow_up_rounds",
         "host_retrieval",
         "first_attempt_structured_output_valid",
         "repair_attempted",

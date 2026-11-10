@@ -41,6 +41,14 @@ class PlanDraft(BaseModel):
     tool_calls: list[ToolCallDraft] = Field(max_length=100)
 
 
+class FollowUpDraft(BaseModel):
+    """Additional tool calls proposed after observing results; empty means sufficient."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    tool_calls: list[ToolCallDraft] = Field(default_factory=list, max_length=4)
+
+
 class GroundedClaimDraft(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 

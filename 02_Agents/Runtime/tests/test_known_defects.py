@@ -113,6 +113,7 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         adapter = ScriptedModelAdapter(
             [
                 _plan({"tool_name": "calculator", "arguments": {"expression": "1 / 0"}, "related_step_id": 1}),
+                ScriptedReply(content="", structured_output={"tool_calls": []}),  # observe: give up
                 ANSWER,
             ]
         )
@@ -125,6 +126,10 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         record = RunRecord.model_validate_json(record_path.read_text(encoding="utf-8"))
         self.assertFalse(record.tool_results[0].success, "precondition: tool must fail")
         self.assertNotEqual(record.plan.steps[0].status, StepStatus.COMPLETED)
+        # A failed tool call is a gap, so exactly one bounded observe round happens.
+        self.assertEqual(
+            [request.metadata["phase"] for request in adapter.requests], ["plan", "observe", "answer"]
+        )
 
     async def test_over_budget_prompt_is_rejected_before_the_model_call(self) -> None:
         # Defect: token budgets are checked only after the model has been called and paid for.
