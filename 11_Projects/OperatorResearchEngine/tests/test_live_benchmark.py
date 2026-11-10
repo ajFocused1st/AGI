@@ -39,6 +39,20 @@ from operator_research_engine.live_benchmark import (
 
 
 class LiveBenchmarkTests(unittest.TestCase):
+    def test_model_authored_pass_rate_excludes_host_fallback(self) -> None:
+        sources = ("model", "model_correction", "host_fallback", None)
+        attempts = [{**_attempt("passed"), "answer_source": source} for source in sources]
+
+        summary = summarize_attempts(attempts, {})
+
+        self.assertAlmostEqual(summary["final_pass_rate"], 1.0)
+        self.assertAlmostEqual(summary["model_authored_pass_rate"], 0.5)
+        self.assertAlmostEqual(summary["host_fallback_rate"], 0.25)
+        self.assertEqual(
+            summary["answer_source_counts"],
+            {"model": 1, "model_correction": 1, "host_fallback": 1, "None": 1},
+        )
+
     def test_metric_aggregation_and_quality_gates(self) -> None:
         attempts = [
             _attempt("passed", safety=True, first=True, final=True, citation=True),

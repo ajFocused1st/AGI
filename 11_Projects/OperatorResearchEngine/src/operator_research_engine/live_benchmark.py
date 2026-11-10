@@ -30,6 +30,7 @@ from .settings import ProjectSettings, load_settings
 
 
 BENCHMARK_ID = "live-reliability-v1"
+MODEL_ANSWER_SOURCES = frozenset({"model", "model_correction"})
 DEFAULT_OUTPUT_ROOT = Path(r"C:\AGI_Runtime\benchmark-results\live-reliability-v1")
 EXIT_ENVIRONMENT_ERROR = 1
 EXIT_QUALITY_GATE_FAILURE = 2
@@ -167,6 +168,7 @@ async def _run_case_attempt(
         "latency_ms": 0.0,
         "status": "failed",
         "final_verdict": "failed",
+        "answer_source": None,
         "first_attempt_structured_output_valid": False,
         "repair_attempted": False,
         "repair_succeeded": False,
@@ -340,6 +342,7 @@ def _metrics_from_record(record: RunRecord, case: dict[str, Any]) -> dict[str, A
         "model_id": record.model_id,
         "status": record.status.value,
         "final_verdict": final_verdict,
+        "answer_source": record.answer_source.value if record.answer_source else None,
         "first_attempt_structured_output_valid": bool(telemetry)
         and all(bool(item.get("first_attempt_valid")) for item in telemetry),
         "repair_attempted": any(bool(item.get("repair_attempted")) for item in telemetry),
@@ -474,6 +477,21 @@ def summarize_attempts(
         "partial": partial,
         "failed": failed,
         "final_pass_rate": _rate(passed, total),
+        # Passes whose final answer text the model wrote; host fallbacks are excluded.
+        "model_authored_pass_rate": _rate(
+            sum(
+                item["final_verdict"] == "passed"
+                and item.get("answer_source") in MODEL_ANSWER_SOURCES
+                for item in attempts
+            ),
+            total,
+        ),
+        "host_fallback_rate": _rate(
+            sum(item.get("answer_source") == "host_fallback" for item in attempts), total
+        ),
+        "answer_source_counts": dict(
+            Counter(str(item.get("answer_source")) for item in attempts)
+        ),
         "first_attempt_structured_success_rate": _rate(
             sum(item["first_attempt_structured_output_valid"] for item in attempts),
             total,
@@ -747,6 +765,9 @@ def _report(summary: dict[str, Any], manifest: dict[str, Any]) -> str:
         "## Outcome",
         "",
         f"- Final pass rate: {summary['final_pass_rate']:.3f}",
+        f"- Model-authored pass rate (excludes host fallback): "
+        f"{summary['model_authored_pass_rate']:.3f}",
+        f"- Host fallback rate: {summary['host_fallback_rate']:.3f}",
         f"- First-attempt structured success: "
         f"{summary['first_attempt_structured_success_rate']:.3f}",
         f"- Repair attempt rate: {summary['repair_attempt_rate']:.3f}",
@@ -826,6 +847,7 @@ def _attempts_csv(attempts: list[dict[str, Any]]) -> str:
         "latency_ms",
         "status",
         "final_verdict",
+        "answer_source",
         "first_attempt_structured_output_valid",
         "repair_attempted",
         "repair_succeeded",

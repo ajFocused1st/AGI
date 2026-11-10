@@ -28,6 +28,12 @@ class GoldenSnapshotTests(unittest.IsolatedAsyncioTestCase):
         differences = diff_paths(expected, actual)
         self.assertEqual(differences, [], "run records drifted:\n" + "\n".join(differences))
 
+    async def test_answer_source_labels_who_wrote_the_answer(self) -> None:
+        sources = {case_id: record["answer_source"] for case_id, record in (await run_all()).items()}
+        self.assertEqual(sources.pop("06-compare-atlas-beacon"), "host_fallback")
+        self.assertEqual(sources.pop("07-missing-information"), "model_correction")
+        self.assertEqual(set(sources.values()), {"model"})
+
     async def test_snapshot_is_deterministic(self) -> None:
         first, second = await run_all(), await run_all()
         self.assertEqual(diff_paths(first, second), [])

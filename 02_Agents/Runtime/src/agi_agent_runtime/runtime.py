@@ -13,6 +13,7 @@ from agi_contracts import (
     AgentProfile,
     AgentRequest,
     AgentResponse,
+    AnswerSource,
     Citation,
     ErrorDetail,
     EvaluationVerdict,
@@ -104,6 +105,7 @@ class AgentRuntime:
         evidence_bundle = None
         tool_argument_histories: list[ToolArgumentRepairHistory] = []
         answer_grounding_telemetry: dict[str, Any] = {}
+        answer_source: AnswerSource | None = None
         plan_requirement_result: PlanRequirementResult | None = None
         response_requirement_result: ResponseRequirementResult | None = None
         plan_requirement_results: list[PlanRequirementResult] = []
@@ -212,6 +214,7 @@ class AgentRuntime:
             usage_parts.append(answer_usage)
             if answer_telemetry is not None:
                 model_telemetry.append(answer_telemetry)
+            answer_source = AnswerSource.MODEL
             answer_text = self._augment_answer(
                 self._render_answer_draft(answer_draft, evidence), tool_results
             )
@@ -271,6 +274,7 @@ class AgentRuntime:
                 usage_parts.append(correction_usage)
                 if correction_telemetry is not None:
                     model_telemetry.append(correction_telemetry)
+                answer_source = AnswerSource.MODEL_CORRECTION
                 answer_text = self._augment_answer(
                     self._render_answer_draft(answer_draft, evidence), tool_results
                 )
@@ -323,6 +327,7 @@ class AgentRuntime:
                     evidence=evidence,
                     requirements=requirements,
                 )
+                answer_source = AnswerSource.HOST_FALLBACK
                 answer_text = self._augment_answer(
                     self._render_answer_draft(answer_draft, evidence), tool_results
                 )
@@ -453,6 +458,7 @@ class AgentRuntime:
                 tool_argument_histories=tool_argument_histories,
                 answer_grounding_telemetry=answer_grounding_telemetry,
                 budget_ledger=governor.ledger.as_dict(),
+                answer_source=answer_source,
             )
             await self._store.save(record)
             return response
@@ -497,6 +503,7 @@ class AgentRuntime:
                 tool_argument_histories=tool_argument_histories,
                 answer_grounding_telemetry=answer_grounding_telemetry,
                 budget_ledger=governor.ledger.as_dict(),
+                answer_source=answer_source,
             )
             try:
                 await self._store.save(record)
@@ -545,6 +552,7 @@ class AgentRuntime:
                 tool_argument_histories=tool_argument_histories,
                 answer_grounding_telemetry=answer_grounding_telemetry,
                 budget_ledger=governor.ledger.as_dict(),
+                answer_source=answer_source,
             )
             try:
                 await self._store.save(record)
@@ -1215,6 +1223,7 @@ class AgentRuntime:
         tool_argument_histories: list[ToolArgumentRepairHistory],
         answer_grounding_telemetry: dict[str, Any],
         budget_ledger: dict[str, Any],
+        answer_source: AnswerSource | None = None,
     ) -> RunRecord:
         completed_at = datetime.now(UTC)
         profile_json = profile.model_dump(mode="json")
@@ -1237,6 +1246,7 @@ class AgentRuntime:
             tool_requests=tool_requests,
             tool_results=tool_results,
             response=response,
+            answer_source=answer_source,
             evaluation=evaluation,
             status=status,
             started_at=started_at,

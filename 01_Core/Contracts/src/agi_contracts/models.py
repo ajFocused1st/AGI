@@ -102,6 +102,14 @@ class EvaluationVerdict(StrEnum):
     FAILED = "failed"
 
 
+class AnswerSource(StrEnum):
+    """Who authored the final answer text, so host fallbacks never count as model skill."""
+
+    MODEL = "model"
+    MODEL_CORRECTION = "model_correction"
+    HOST_FALLBACK = "host_fallback"
+
+
 class ErrorDetail(ContractModel):
     code: Identifier
     message: ShortText
@@ -545,6 +553,7 @@ class RunRecord(ContractModel):
     tool_requests: list[ToolRequest] = Field(default_factory=list, max_length=512)
     tool_results: list[ToolResult] = Field(default_factory=list, max_length=512)
     response: AgentResponse | None = None
+    answer_source: AnswerSource | None = None
     evaluation: EvaluationResult | None = None
     status: RunStatus = RunStatus.PENDING
     started_at: AwareDatetime = Field(default_factory=utc_now)

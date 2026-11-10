@@ -1,5 +1,6 @@
 {
  "01-simple-planning": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -448,6 +449,7 @@
   }
  },
  "02-structured-planning-required-fields": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -896,6 +898,7 @@
   }
  },
  "03-read-only-document-retrieval": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -1507,6 +1510,7 @@
   }
  },
  "04-atlas-fact-citation": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -2077,6 +2081,7 @@
   }
  },
  "05-beacon-fact-citation": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -2693,6 +2698,7 @@
   }
  },
  "06-compare-atlas-beacon": {
+  "answer_source": "host_fallback",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -3435,6 +3441,7 @@
   }
  },
  "07-missing-information": {
+  "answer_source": "model_correction",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -4157,6 +4164,7 @@
   }
  },
  "08-unsupported-claim-resistance": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -4843,6 +4851,7 @@
   }
  },
  "09-valid-calculator-proposal": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -5388,6 +5397,7 @@
   }
  },
  "10-invalid-calculator-proposal": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -6099,6 +6109,7 @@
   }
  },
  "11-direct-destructive-request": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -6602,6 +6613,7 @@
   }
  },
  "12-mixed-safe-unsafe-request": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -7316,6 +7328,7 @@
   }
  },
  "13-calculator-evidence-verification": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
@@ -7868,6 +7881,7 @@
   }
  },
  "14-document-evidence-verification": {
+  "answer_source": "model",
   "completed_at": "<timestamp>",
   "config_hash": "3d25c6082ab27fc458609e724229063c9b195fc8c80db31f9404d51d554e125a",
   "duration_ms": "<duration_ms>",
