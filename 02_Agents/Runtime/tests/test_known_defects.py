@@ -1,8 +1,7 @@
-"""Characterization tests for confirmed defects (correction plan, step 1).
+"""Regression guards for defects confirmed in correction-plan step 1, fixed in steps 3-6.
 
-Each test asserts the CORRECT behavior and is marked expectedFailure until fixed in step 4.
-When a fix lands, unittest reports an "unexpected success" (a suite failure), which forces
-removing the marker so the test becomes a permanent regression guard.
+Each test asserts the correct behavior. They were marked expectedFailure until their fix
+landed; the resulting "unexpected success" forced removing the marker.
 """
 
 from __future__ import annotations
@@ -127,7 +126,6 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(record.tool_results[0].success, "precondition: tool must fail")
         self.assertNotEqual(record.plan.steps[0].status, StepStatus.COMPLETED)
 
-    @unittest.expectedFailure  # fixed in step 6 (pre-flight token budget)
     async def test_over_budget_prompt_is_rejected_before_the_model_call(self) -> None:
         # Defect: token budgets are checked only after the model has been called and paid for.
         policy = RoutingPolicy(
@@ -161,6 +159,39 @@ class KnownDefectTests(unittest.IsolatedAsyncioTestCase):
             failed = True
         self.assertEqual(len(adapter.requests), 0, "model was called with an over-budget prompt")
         self.assertTrue(failed, "over-budget run must fail safely")
+
+
+class UsageEstimateTests(unittest.TestCase):
+    def test_missing_provider_usage_is_estimated_not_zero(self) -> None:
+        from agi_agent_runtime.budgets import BudgetGovernor
+        from agi_agent_runtime.routing import get_routing_policy
+        from agi_contracts import ModelMessage, ModelRequest, ModelResponse, ModelUsage
+
+        request = ModelRequest(
+            model="m", messages=[ModelMessage(role="user", content="x" * 400)], max_tokens=64
+        )
+        response = ModelResponse(
+            request_id=request.request_id, model="m", content="y" * 40, usage=ModelUsage()
+        )
+        governor = BudgetGovernor(get_routing_policy(ReasoningTier.STANDARD))
+        governor.reserve_model_call("answer", request)
+        governor.record_model_usage("answer", ModelUsage(), request=request, response=response)
+        ledger = governor.ledger.as_dict()
+        self.assertEqual((ledger["input_tokens"], ledger["output_tokens"]), (100, 10))
+        self.assertTrue(ledger["events"][-1]["estimated"])
+
+    def test_reported_provider_usage_is_used_as_is(self) -> None:
+        from agi_agent_runtime.budgets import BudgetGovernor
+        from agi_agent_runtime.routing import get_routing_policy
+        from agi_contracts import ModelUsage
+
+        governor = BudgetGovernor(get_routing_policy(ReasoningTier.STANDARD))
+        governor.reserve_model_call("answer")
+        governor.record_model_usage(
+            "answer", ModelUsage(input_tokens=7, output_tokens=3, total_tokens=10)
+        )
+        self.assertEqual(governor.ledger.total_tokens, 10)
+        self.assertNotIn("estimated", governor.ledger.as_dict()["events"][-1])
 
 
 class RoutingPolicyFlagTests(unittest.IsolatedAsyncioTestCase):

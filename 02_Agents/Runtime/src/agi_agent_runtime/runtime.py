@@ -650,9 +650,11 @@ class AgentRuntime:
             },
         )
         phase = "plan_correction" if correction is not None else "plan"
-        governor.reserve_model_call(phase)
+        governor.reserve_model_call(phase, model_request)
         model_response = await self._model.generate(model_request)
-        governor.record_model_usage(phase, model_response.usage)
+        governor.record_model_usage(
+            phase, model_response.usage, request=model_request, response=model_response
+        )
         if model_response.request_id != model_request.request_id:
             raise ValueError("model response request_id mismatch")
         if model_response.structured_output is None:
@@ -937,9 +939,11 @@ class AgentRuntime:
             max_tokens=1024,
             metadata={"phase": "tool_argument_repair", "run_id": str(run_id)},
         )
-        governor.reserve_model_call("tool_argument_repair")
+        governor.reserve_model_call("tool_argument_repair", request)
         response = await self._model.generate(request)
-        governor.record_model_usage("tool_argument_repair", response.usage)
+        governor.record_model_usage(
+            "tool_argument_repair", response.usage, request=request, response=response
+        )
         if response.structured_output is None:
             raise ValueError("tool argument repair did not return structured output")
         repaired = ToolCallDraft.model_validate(response.structured_output)
@@ -1010,9 +1014,11 @@ class AgentRuntime:
             },
         )
         phase = "answer_correction" if correction is not None else "answer"
-        governor.reserve_model_call(phase)
+        governor.reserve_model_call(phase, model_request)
         model_response = await self._model.generate(model_request)
-        governor.record_model_usage(phase, model_response.usage)
+        governor.record_model_usage(
+            phase, model_response.usage, request=model_request, response=model_response
+        )
         if model_response.request_id != model_request.request_id:
             raise ValueError("model response request_id mismatch")
         if model_response.structured_output is None:
@@ -1069,9 +1075,11 @@ class AgentRuntime:
             metadata={"phase": "critique", "run_id": str(run_id)},
         )
         try:
-            governor.reserve_model_call("critique")
+            governor.reserve_model_call("critique", model_request)
             model_response = await self._model.generate(model_request)
-            governor.record_model_usage("critique", model_response.usage)
+            governor.record_model_usage(
+                "critique", model_response.usage, request=model_request, response=model_response
+            )
             if model_response.request_id != model_request.request_id:
                 raise ValueError("model response request_id mismatch")
             if model_response.structured_output is None:

@@ -140,12 +140,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 471,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 33,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 504
      },
      {
       "accepted": true,
@@ -158,20 +159,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 257,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 17,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 274
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 728,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 50,
     "tier": "standard",
     "tool_attempts": 0,
-    "total_tokens": 0
+    "total_tokens": 778
    },
    "model_telemetry": []
   },
@@ -589,12 +591,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 473,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 33,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 506
      },
      {
       "accepted": true,
@@ -607,20 +610,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 259,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 18,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 277
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 732,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 51,
     "tier": "standard",
     "tool_attempts": 0,
-    "total_tokens": 0
+    "total_tokens": 783
    },
    "model_telemetry": []
   },
@@ -1069,12 +1073,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 505,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 37,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 542
      },
      {
       "accepted": true,
@@ -1096,20 +1101,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 367,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 31,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 398
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 872,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 68,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 940
    },
    "model_telemetry": []
   },
@@ -1666,12 +1672,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 500,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 37,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 537
      },
      {
       "accepted": true,
@@ -1693,20 +1700,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 331,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 31,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 362
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 831,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 68,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 899
    },
    "model_telemetry": []
   },
@@ -2237,12 +2245,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 500,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 36,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 536
      },
      {
       "accepted": true,
@@ -2255,12 +2264,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 241,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 20,
       "phase": "tool_argument_repair",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 261
      },
      {
       "accepted": true,
@@ -2282,20 +2292,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 330,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 30,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 360
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1071,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 86,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 1157
    },
    "model_telemetry": []
   },
@@ -2869,12 +2880,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 511,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 75,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 586
      },
      {
       "accepted": true,
@@ -2905,12 +2917,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 406,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 14,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 420
      },
      {
       "accepted": true,
@@ -2923,20 +2936,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 409,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 11,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 420
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1326,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 100,
     "tier": "standard",
     "tool_attempts": 2,
-    "total_tokens": 0
+    "total_tokens": 1426
    },
    "model_telemetry": []
   },
@@ -3642,12 +3656,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 502,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 38,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 540
      },
      {
       "accepted": true,
@@ -3669,12 +3684,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 435,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 15,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 450
      },
      {
       "accepted": true,
@@ -3687,20 +3703,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 441,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 22,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 463
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1378,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 75,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 1453
    },
    "model_telemetry": []
   },
@@ -4365,12 +4382,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 508,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 36,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 544
      },
      {
       "accepted": true,
@@ -4392,20 +4410,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 441,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 22,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 463
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 949,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 58,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 1007
    },
    "model_telemetry": []
   },
@@ -5006,12 +5025,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 473,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 32,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 505
      },
      {
       "accepted": true,
@@ -5033,20 +5053,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 291,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 11,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 302
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 764,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 43,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 807
    },
    "model_telemetry": []
   },
@@ -5583,12 +5604,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 500,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 60,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 560
      },
      {
       "accepted": true,
@@ -5601,12 +5623,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 550,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 35,
       "phase": "plan_correction",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 585
      },
      {
       "accepted": true,
@@ -5628,20 +5651,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 413,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 18,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 431
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1463,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 113,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 1576
    },
    "model_telemetry": []
   },
@@ -6249,12 +6273,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 459,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 31,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 490
      },
      {
       "accepted": true,
@@ -6267,12 +6292,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 524,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 17,
       "phase": "plan_correction",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 541
      },
      {
       "accepted": true,
@@ -6285,20 +6311,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 259,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 15,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 274
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1242,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 63,
     "tier": "standard",
     "tool_attempts": 0,
-    "total_tokens": 0
+    "total_tokens": 1305
    },
    "model_telemetry": []
   },
@@ -6799,12 +6826,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 494,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 59,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 553
      },
      {
       "accepted": true,
@@ -6817,12 +6845,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 559,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 33,
       "phase": "plan_correction",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 592
      },
      {
       "accepted": true,
@@ -6844,20 +6873,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 406,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 18,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 424
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 1459,
     "model_attempts": 3,
-    "output_tokens": 0,
+    "output_tokens": 110,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 1569
    },
    "model_telemetry": []
   },
@@ -7483,12 +7513,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 503,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 32,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 535
      },
      {
       "accepted": true,
@@ -7510,20 +7541,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 321,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 28,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 349
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 824,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 60,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 884
    },
    "model_telemetry": []
   },
@@ -8037,12 +8069,13 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 511,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 36,
       "phase": "plan",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 547
      },
      {
       "accepted": true,
@@ -8064,20 +8097,21 @@
      },
      {
       "accepted": true,
-      "input_tokens": 0,
+      "estimated": true,
+      "input_tokens": 341,
       "kind": "model_usage",
-      "output_tokens": 0,
+      "output_tokens": 29,
       "phase": "answer",
       "reason": null,
-      "total_tokens": 0
+      "total_tokens": 370
      }
     ],
-    "input_tokens": 0,
+    "input_tokens": 852,
     "model_attempts": 2,
-    "output_tokens": 0,
+    "output_tokens": 65,
     "tier": "standard",
     "tool_attempts": 1,
-    "total_tokens": 0
+    "total_tokens": 917
    },
    "model_telemetry": []
   },

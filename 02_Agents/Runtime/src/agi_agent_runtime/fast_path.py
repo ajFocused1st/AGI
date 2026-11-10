@@ -26,7 +26,6 @@ class FastPathRunner:
 
     async def run(self, request: AgentRequest, profile: AgentProfile) -> FastPathResult:
         governor = BudgetGovernor(self._policy)
-        governor.reserve_model_call("fast_answer")
         model_request = ModelRequest(
             model=profile.model,
             messages=[
@@ -47,6 +46,9 @@ class FastPathRunner:
                 "native_thinking": self._policy.native_thinking,
             },
         )
+        governor.reserve_model_call("fast_answer", model_request)
         response = await self._model.generate(model_request)
-        governor.record_model_usage("fast_answer", response.usage)
+        governor.record_model_usage(
+            "fast_answer", response.usage, request=model_request, response=response
+        )
         return FastPathResult(response=response, ledger=governor.ledger.as_dict())

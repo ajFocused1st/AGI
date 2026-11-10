@@ -6,9 +6,24 @@ from dataclasses import dataclass, field
 from time import perf_counter
 from typing import Any
 
-from agi_contracts import ModelUsage
+import math
+
+from agi_contracts import ModelRequest, ModelResponse, ModelUsage
 
 from .routing import BudgetPolicy, RoutingPolicy
+
+# Conservative host-side approximation (~4 characters per token for English and JSON).
+CHARS_PER_TOKEN = 4
+
+
+def _estimate_text_tokens(text: str) -> int:
+    return math.ceil(len(text) / CHARS_PER_TOKEN)
+
+
+def estimate_prompt_tokens(request: ModelRequest) -> int:
+    """Approximate prompt tokens from message text, before any provider call."""
+
+    return sum(_estimate_text_tokens(message.content) for message in request.messages)
 
 
 class BudgetExceeded(RuntimeError):
@@ -24,9 +39,10 @@ class BudgetEvent:
     input_tokens: int | None = None
     output_tokens: int | None = None
     total_tokens: int | None = None
+    estimated: bool = False
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "kind": self.kind,
             "phase": self.phase,
             "accepted": self.accepted,
@@ -35,6 +51,9 @@ class BudgetEvent:
             "output_tokens": self.output_tokens,
             "total_tokens": self.total_tokens,
         }
+        if self.estimated:
+            payload["estimated"] = True
+        return payload
 
 
 @dataclass
@@ -67,21 +86,46 @@ class BudgetGovernor:
         self.ledger = BudgetLedger(policy=policy)
         self._started_clock = perf_counter()
 
-    def reserve_model_call(self, phase: str) -> None:
+    def reserve_model_call(self, phase: str, request: ModelRequest | None = None) -> None:
+        """Reject a call before it is made if it would exceed the call or input-token budget."""
+
         self._raise_if_time_exceeded(phase)
         next_count = self.ledger.model_attempts + 1
         if next_count > self.policy.budget.max_model_calls:
             reason = _reason("model call", next_count, self.policy.budget.max_model_calls)
             self.ledger.events.append(BudgetEvent("model_call", phase, False, reason))
             raise BudgetExceeded(reason)
+        limit = self.policy.budget.max_input_tokens
+        if request is not None and limit is not None:
+            projected = self.ledger.input_tokens + estimate_prompt_tokens(request)
+            if projected > limit:
+                reason = "pre-flight " + _reason("input token", projected, limit)
+                self.ledger.events.append(BudgetEvent("model_call", phase, False, reason))
+                raise BudgetExceeded(reason)
         self.ledger.model_attempts = next_count
         self.ledger.events.append(BudgetEvent("model_call", phase, True))
 
-    def record_model_usage(self, phase: str, usage: ModelUsage) -> None:
-        input_tokens = usage.input_tokens or 0
-        output_tokens = usage.output_tokens or 0
+    def record_model_usage(
+        self,
+        phase: str,
+        usage: ModelUsage,
+        *,
+        request: ModelRequest | None = None,
+        response: ModelResponse | None = None,
+    ) -> None:
+        """Record provider usage; when a provider omits counts, use host estimates, never 0."""
+
+        estimated = False
+        input_tokens = usage.input_tokens
+        if input_tokens is None:
+            input_tokens = estimate_prompt_tokens(request) if request is not None else 0
+            estimated = request is not None
+        output_tokens = usage.output_tokens
+        if output_tokens is None:
+            output_tokens = _estimate_text_tokens(response.content) if response is not None else 0
+            estimated = estimated or response is not None
         total_tokens = usage.total_tokens
-        if total_tokens is None:
+        if total_tokens is None or estimated:
             total_tokens = input_tokens + output_tokens
         self.ledger.input_tokens += input_tokens
         self.ledger.output_tokens += output_tokens
@@ -94,6 +138,7 @@ class BudgetGovernor:
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
+                estimated=estimated,
             )
         )
         self._raise_if_token_budget_exceeded(self.policy.budget, phase)
