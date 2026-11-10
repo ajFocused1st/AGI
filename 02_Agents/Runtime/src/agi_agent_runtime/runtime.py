@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -63,6 +64,58 @@ class RuntimeExecutionError(RuntimeError):
         self.run_id = run_id
 
 
+@dataclass
+class _RunState:
+    """Mutable state for one run, threaded through the stage methods."""
+
+    request: AgentRequest
+    profile: AgentProfile
+    requirements: TaskRequirements
+    expectations: EvaluationExpectations | None
+    known_unsupported_claims: list[str] | None
+    governor: BudgetGovernor
+    run_id: UUID = field(default_factory=uuid4)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    started_clock: float = field(default_factory=perf_counter)
+    tool_requests: list[ToolRequest] = field(default_factory=list)
+    tool_results: list[ToolResult] = field(default_factory=list)
+    decisions: list[PermissionDecision] = field(default_factory=list)
+    errors: list[ErrorDetail] = field(default_factory=list)
+    usage_parts: list[ModelUsage] = field(default_factory=list)
+    model_telemetry: list[dict[str, Any]] = field(default_factory=list)
+    plan: TaskPlan | None = None
+    tool_call_drafts: list[ToolCallDraft] = field(default_factory=list)
+    tool_argument_histories: list[ToolArgumentRepairHistory] = field(default_factory=list)
+    evidence_bundle: Any = None
+    evidence: list[EvidenceReference] = field(default_factory=list)
+    answer_draft: AnswerDraft = field(default_factory=AnswerDraft)
+    answer_text: str = ""
+    answer_source: AnswerSource | None = None
+    citations: list[Citation] = field(default_factory=list)
+    answer_grounding_telemetry: dict[str, Any] = field(default_factory=dict)
+    plan_requirement_result: PlanRequirementResult | None = None
+    plan_requirement_results: list[PlanRequirementResult] = field(default_factory=list)
+    response_requirement_result: ResponseRequirementResult | None = None
+    response_requirement_results: list[ResponseRequirementResult] = field(default_factory=list)
+    response: AgentResponse | None = None
+    evaluation: Any = None
+
+    def add_model_call(self, usage: ModelUsage, telemetry: dict[str, Any] | None) -> None:
+        self.usage_parts.append(usage)
+        if telemetry is not None:
+            self.model_telemetry.append(telemetry)
+
+    def extend_tool_trace(
+        self,
+        requests: list[ToolRequest],
+        results: list[ToolResult],
+        decisions: list[PermissionDecision],
+    ) -> None:
+        self.tool_requests.extend(requests)
+        self.tool_results.extend(results)
+        self.decisions.extend(decisions)
+
+
 class AgentRuntime:
     """Runtime-owned state machine with injected model, tools, evaluator, and store."""
 
@@ -96,488 +149,358 @@ class AgentRuntime:
         known_unsupported_claims: list[str] | None = None,
         requirements: TaskRequirements | None = None,
     ) -> AgentResponse:
-        requirements = requirements or TaskRequirements()
-        run_id = uuid4()
-        started_at = datetime.now(UTC)
-        started_clock = perf_counter()
-        tool_requests: list[ToolRequest] = []
-        tool_results: list[ToolResult] = []
-        decisions = []
-        errors: list[ErrorDetail] = []
-        usage_parts: list[ModelUsage] = []
-        plan: TaskPlan | None = None
-        response: AgentResponse | None = None
-        evaluation = None
-        model_telemetry: list[dict[str, Any]] = []
-        tool_call_drafts: list[ToolCallDraft] = []
-        evidence_bundle = None
-        tool_argument_histories: list[ToolArgumentRepairHistory] = []
-        answer_grounding_telemetry: dict[str, Any] = {}
-        answer_source: AnswerSource | None = None
-        plan_requirement_result: PlanRequirementResult | None = None
-        response_requirement_result: ResponseRequirementResult | None = None
-        plan_requirement_results: list[PlanRequirementResult] = []
-        response_requirement_results: list[ResponseRequirementResult] = []
-        governor = BudgetGovernor(self._routing_policy)
-        allow_revision = self._routing_policy.allow_revision
-
+        state = _RunState(
+            request=request,
+            profile=profile,
+            requirements=requirements or TaskRequirements(),
+            expectations=expectations,
+            known_unsupported_claims=known_unsupported_claims,
+            governor=BudgetGovernor(self._routing_policy),
+        )
         try:
-            if self._routing_policy.allow_tools:
-                plan, tool_call_drafts, plan_usage, plan_telemetry = await self._create_plan(
-                    run_id, request, profile, requirements=requirements, governor=governor
-                )
-            else:
-                # Tool-free tiers (FAST) answer directly: a host-owned one-step plan, no plan call.
-                plan = TaskPlan(
-                    goal=request.goal,
-                    steps=[TaskStep(description="Answer directly without tools")],
-                )
-                tool_call_drafts, plan_usage, plan_telemetry = [], ModelUsage(), None
-            usage_parts.append(plan_usage)
-            if plan_telemetry is not None:
-                model_telemetry.append(plan_telemetry)
-            plan_requirement_result = validate_plan_requirements(
-                requirements,
-                plan,
-                self._tools.tools,
-                proposed_capabilities=[item.tool_name for item in tool_call_drafts],
-            )
-            plan_requirement_results.append(plan_requirement_result)
-            if not plan_requirement_result.valid:
-                blocked_requests, blocked_results, blocked_decisions = (
-                    self._blocked_plan_proposals(tool_call_drafts, plan_requirement_result)
-                )
-                tool_requests.extend(blocked_requests)
-                tool_results.extend(blocked_results)
-                decisions.extend(blocked_decisions)
-            if not plan_requirement_result.valid and allow_revision:
-                plan, tool_call_drafts, correction_usage, correction_telemetry = await self._create_plan(
-                    run_id,
-                    request,
-                    profile,
-                    requirements=requirements,
-                    correction=plan_requirement_result,
-                    governor=governor,
-                )
-                usage_parts.append(correction_usage)
-                if correction_telemetry is not None:
-                    model_telemetry.append(correction_telemetry)
-                plan_requirement_result = validate_plan_requirements(
-                    requirements,
-                    plan,
-                    self._tools.tools,
-                    correction_attempted=True,
-                    proposed_capabilities=[item.tool_name for item in tool_call_drafts],
-                )
-                plan_requirement_results.append(plan_requirement_result)
-            if not plan_requirement_result.valid:
-                errors.append(
-                    ErrorDetail(
-                        code="tool_dispatch_blocked",
-                        message=(
-                            "The corrected plan did not satisfy capability requirements; "
-                            "no model-proposed tool call was dispatched."
-                        ),
-                        component="agent_runtime",
-                    )
-                )
-                tool_call_drafts = []
-            recorded_denials = {decision.tool_name for decision in decisions if not decision.allowed}
-            policy_requests, policy_results, policy_decisions = self._policy_denials(
-                set(requirements.forbidden_capabilities) - recorded_denials
-            )
-            tool_requests.extend(policy_requests)
-            tool_results.extend(policy_results)
-            decisions.extend(policy_decisions)
-            (
-                tool_call_drafts,
-                tool_argument_histories,
-                argument_errors,
-                argument_usage,
-                argument_telemetry,
-            ) = await self._validate_tool_calls(
-                run_id, tool_call_drafts, profile, requirements, governor=governor
-            )
-            errors.extend(argument_errors)
-            usage_parts.extend(argument_usage)
-            model_telemetry.extend(argument_telemetry)
-            plan, executed_requests, executed_results, execution_decisions = await self._execute_plan(
-                plan, tool_call_drafts, profile, governor=governor
-            )
-            tool_requests.extend(executed_requests)
-            tool_results.extend(executed_results)
-            decisions.extend(execution_decisions)
-            evidence_bundle = build_evidence_bundle(tool_requests, tool_results)
-            evidence = self._references_from_bundle(evidence_bundle)
-            if requirements.requires_grounding and not evidence:
-                errors.append(
-                    ErrorDetail(
-                        code="retrieval_returned_no_evidence",
-                        message="Approved retrieval completed without usable evidence.",
-                        component="agent_runtime",
-                    )
-                )
-            answer_draft, answer_usage, answer_telemetry = await self._create_answer(
-                run_id=run_id,
-                request=request,
-                profile=profile,
-                plan=plan,
-                tool_results=tool_results,
-                evidence=evidence,
-                requirements=requirements,
-                governor=governor,
-            )
-            usage_parts.append(answer_usage)
-            if answer_telemetry is not None:
-                model_telemetry.append(answer_telemetry)
-            answer_source = AnswerSource.MODEL
-            answer_text = self._augment_answer(
-                self._render_answer_draft(answer_draft, evidence), tool_results
-            )
-            requested_evidence_ids = list(answer_draft.cited_evidence_ids)
-            requested_evidence_ids.extend(
-                evidence_id
-                for claim in answer_draft.claims
-                for evidence_id in claim.evidence_ids
-            )
-            citations, citation_errors = self._resolve_citations(
-                requested_evidence_ids, evidence
-            )
-            errors.extend(citation_errors)
-            draft_unsupported = (
-                [claim.text for claim in answer_draft.claims if not claim.evidence_ids]
-                if requirements.requires_grounding
-                else []
-            )
-            unsupported = list(known_unsupported_claims or []) + draft_unsupported
-            preliminary_evaluation = self._evaluator.evaluate(
-                run_id=run_id,
-                request=request,
-                plan=plan,
-                answer=answer_text,
-                evidence=evidence,
-                citations=citations,
-                tool_requests=tool_requests,
-                tool_results=tool_results,
-                permission_decisions=decisions,
-                expectations=expectations,
-                unsupported_claims=unsupported,
-            )
-            verification_failures = _verification_failures(preliminary_evaluation)
-            response_requirement_result = validate_response_requirements(
-                requirements,
-                answer=answer_text,
-                evidence=evidence,
-                citations=citations,
-                unsupported_claims=list(preliminary_evaluation.unsupported_claims)
-                + verification_failures,
-            )
-            response_requirement_results.append(response_requirement_result)
-            if not response_requirement_result.valid and allow_revision:
-                answer_draft, correction_usage, correction_telemetry = (
-                    await self._create_answer(
-                        run_id=run_id,
-                        request=request,
-                        profile=profile,
-                        plan=plan,
-                        tool_results=tool_results,
-                        evidence=evidence,
-                        requirements=requirements,
-                        correction=response_requirement_result,
-                        governor=governor,
-                    )
-                )
-                usage_parts.append(correction_usage)
-                if correction_telemetry is not None:
-                    model_telemetry.append(correction_telemetry)
-                answer_source = AnswerSource.MODEL_CORRECTION
-                answer_text = self._augment_answer(
-                    self._render_answer_draft(answer_draft, evidence), tool_results
-                )
-                requested_evidence_ids = list(answer_draft.cited_evidence_ids)
-                requested_evidence_ids.extend(
-                    evidence_id
-                    for claim in answer_draft.claims
-                    for evidence_id in claim.evidence_ids
-                )
-                citations, correction_errors = self._resolve_citations(
-                    requested_evidence_ids, evidence
-                )
-                errors.extend(correction_errors)
-                corrected_evaluation = self._evaluator.evaluate(
-                    run_id=run_id,
-                    request=request,
-                    plan=plan,
-                    answer=answer_text,
-                    evidence=evidence,
-                    citations=citations,
-                    tool_requests=tool_requests,
-                    tool_results=tool_results,
-                    permission_decisions=decisions,
-                    expectations=expectations,
-                    unsupported_claims=list(known_unsupported_claims or [])
-                    + (
-                        [claim.text for claim in answer_draft.claims if not claim.evidence_ids]
-                        if requirements.requires_grounding
-                        else []
-                    ),
-                )
-                corrected_verification_failures = _verification_failures(corrected_evaluation)
-                response_requirement_result = validate_response_requirements(
-                    requirements,
-                    answer=answer_text,
-                    evidence=evidence,
-                    citations=citations,
-                    unsupported_claims=list(corrected_evaluation.unsupported_claims)
-                    + corrected_verification_failures,
-                    correction_attempted=True,
-                )
-                response_requirement_results.append(response_requirement_result)
-            if (
-                not response_requirement_result.valid
-                and evidence
-                and _can_use_fallback_response(response_requirement_result)
-            ):
-                answer_draft = _fallback_answer_draft(
-                    goal=request.goal,
-                    evidence=evidence,
-                    requirements=requirements,
-                )
-                answer_source = AnswerSource.HOST_FALLBACK
-                answer_text = self._augment_answer(
-                    self._render_answer_draft(answer_draft, evidence), tool_results
-                )
-                requested_evidence_ids = list(answer_draft.cited_evidence_ids)
-                requested_evidence_ids.extend(
-                    evidence_id
-                    for claim in answer_draft.claims
-                    for evidence_id in claim.evidence_ids
-                )
-                citations, fallback_errors = self._resolve_citations(
-                    requested_evidence_ids, evidence
-                )
-                errors.extend(fallback_errors)
-                fallback_evaluation = self._evaluator.evaluate(
-                    run_id=run_id,
-                    request=request,
-                    plan=plan,
-                    answer=answer_text,
-                    evidence=evidence,
-                    citations=citations,
-                    tool_requests=tool_requests,
-                    tool_results=tool_results,
-                    permission_decisions=decisions,
-                    expectations=expectations,
-                    unsupported_claims=list(known_unsupported_claims or [])
-                    + (
-                        [claim.text for claim in answer_draft.claims if not claim.evidence_ids]
-                        if requirements.requires_grounding
-                        else []
-                    ),
-                )
-                fallback_verification_failures = _verification_failures(fallback_evaluation)
-                response_requirement_result = validate_response_requirements(
-                    requirements,
-                    answer=answer_text,
-                    evidence=evidence,
-                    citations=citations,
-                    unsupported_claims=list(fallback_evaluation.unsupported_claims)
-                    + fallback_verification_failures,
-                    correction_attempted=True,
-                )
-                if len(response_requirement_results) >= 2:
-                    response_requirement_results[-1] = response_requirement_result
-                else:
-                    response_requirement_results.append(response_requirement_result)
-            answer_grounding_telemetry = {
-                "grounded_claim_count": len(answer_draft.claims),
-                "claims_with_evidence_count": sum(
-                    bool(claim.evidence_ids) for claim in answer_draft.claims
-                ),
-                "unknown_evidence_reference_count": sum(
-                    error.code == "invalid_citation" for error in errors
-                ),
-            }
-            if not response_requirement_result.valid:
-                errors.append(
-                    ErrorDetail(
-                        code="response_repair_failed",
-                        message="The bounded answer repair did not satisfy response requirements.",
-                        component="agent_runtime",
-                    )
-                )
-            model_critique = None
-            if self._enable_model_critique:
-                model_critique, critique_usage, critique_telemetry = await self._create_critique(
-                    run_id=run_id,
-                    request=request,
-                    profile=profile,
-                    plan=plan,
-                    tool_results=tool_results,
-                    evidence=evidence,
-                    answer=answer_text,
-                    governor=governor,
-                )
-                if critique_usage is not None:
-                    usage_parts.append(critique_usage)
-                if critique_telemetry is not None:
-                    model_telemetry.append(critique_telemetry)
-
-            evaluation = self._evaluator.evaluate(
-                run_id=run_id,
-                request=request,
-                plan=plan,
-                answer=answer_text,
-                evidence=evidence,
-                citations=citations,
-                tool_requests=tool_requests,
-                tool_results=tool_results,
-                permission_decisions=decisions,
-                expectations=expectations,
-                unsupported_claims=known_unsupported_claims,
-                model_critique=model_critique,
-            )
-            if response_requirement_result is not None and not response_requirement_result.valid:
-                evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
-            response = AgentResponse(
+            await self._plan_stage(state)
+            await self._tool_stage(state)
+            await self._answer_stage(state)
+            await self._final_evaluation(state)
+            state.response = AgentResponse(
                 request_id=request.request_id,
-                run_id=run_id,
+                run_id=state.run_id,
                 status=RunStatus.COMPLETED,
-                answer=answer_text,
-                evidence=evidence,
-                citations=citations,
-                evaluation=evaluation,
-                errors=errors,
+                answer=state.answer_text,
+                evidence=state.evidence,
+                citations=state.citations,
+                evaluation=state.evaluation,
+                errors=state.errors,
             )
-            record = self._record(
-                run_id=run_id,
-                request=request,
-                profile=profile,
-                plan=plan,
-                tool_requests=tool_requests,
-                tool_results=tool_results,
-                decisions=decisions,
-                response=response,
-                evaluation=evaluation,
-                status=RunStatus.COMPLETED,
-                started_at=started_at,
-                started_clock=started_clock,
-                errors=errors,
-                usage=self._merge_usage(usage_parts),
-                model_telemetry=model_telemetry,
-                requirements=requirements,
-                plan_requirement_result=plan_requirement_result,
-                response_requirement_result=response_requirement_result,
-                plan_requirement_results=plan_requirement_results,
-                response_requirement_results=response_requirement_results,
-                evidence_bundle=evidence_bundle,
-                tool_argument_histories=tool_argument_histories,
-                answer_grounding_telemetry=answer_grounding_telemetry,
-                budget_ledger=governor.ledger.as_dict(),
-                answer_source=answer_source,
-            )
-            await self._store.save(record)
-            return response
+            await self._store.save(self._state_record(state, RunStatus.COMPLETED))
+            return state.response
         except BudgetExceeded as exc:
-            error = ErrorDetail(
-                code="budget_exceeded",
-                message=str(exc),
-                component="agent_runtime",
-                retryable=False,
-            )
-            errors.append(error)
-            if response is None:
-                response = AgentResponse(
-                    request_id=request.request_id,
-                    run_id=run_id,
-                    status=RunStatus.FAILED,
-                    answer="The research run stopped because its configured budget was exhausted.",
-                    errors=errors,
+            state.errors.append(
+                ErrorDetail(
+                    code="budget_exceeded",
+                    message=str(exc),
+                    component="agent_runtime",
+                    retryable=False,
                 )
-            record = self._record(
-                run_id=run_id,
-                request=request,
-                profile=profile,
-                plan=plan,
-                tool_requests=tool_requests,
-                tool_results=tool_results,
-                decisions=decisions,
-                response=response,
-                evaluation=evaluation,
-                status=RunStatus.FAILED,
-                started_at=started_at,
-                started_clock=started_clock,
-                errors=errors,
-                usage=self._merge_usage(usage_parts),
-                model_telemetry=model_telemetry,
-                requirements=requirements,
-                plan_requirement_result=plan_requirement_result,
-                response_requirement_result=response_requirement_result,
-                plan_requirement_results=plan_requirement_results,
-                response_requirement_results=response_requirement_results,
-                evidence_bundle=evidence_bundle,
-                tool_argument_histories=tool_argument_histories,
-                answer_grounding_telemetry=answer_grounding_telemetry,
-                budget_ledger=governor.ledger.as_dict(),
-                answer_source=answer_source,
             )
-            try:
-                await self._store.save(record)
-            except Exception as store_error:
-                raise RuntimeExecutionError(run_id, "run and audit persistence failed") from store_error
-            raise RuntimeExecutionError(run_id, "run budget exhausted") from exc
+            await self._persist_failure(
+                state, "The research run stopped because its configured budget was exhausted."
+            )
+            raise RuntimeExecutionError(state.run_id, "run budget exhausted") from exc
         except Exception as exc:
-            error = ErrorDetail(
-                code="runtime_failure",
-                message="The run failed safely; inspect the stored error code and local logs.",
-                component="agent_runtime",
-                retryable=False,
-                details={
-                    "exception_type": type(exc).__name__,
-                    "exception_message": _safe_exception_message(exc),
-                },
-            )
-            errors.append(error)
-            if response is None:
-                response = AgentResponse(
-                    request_id=request.request_id,
-                    run_id=run_id,
-                    status=RunStatus.FAILED,
-                    answer="The research run could not be completed safely.",
-                    errors=errors,
+            state.errors.append(
+                ErrorDetail(
+                    code="runtime_failure",
+                    message="The run failed safely; inspect the stored error code and local logs.",
+                    component="agent_runtime",
+                    retryable=False,
+                    details={
+                        "exception_type": type(exc).__name__,
+                        "exception_message": _safe_exception_message(exc),
+                    },
                 )
-            record = self._record(
-                run_id=run_id,
-                request=request,
-                profile=profile,
-                plan=plan,
-                tool_requests=tool_requests,
-                tool_results=tool_results,
-                decisions=decisions,
-                response=response,
-                evaluation=evaluation,
-                status=RunStatus.FAILED,
-                started_at=started_at,
-                started_clock=started_clock,
-                errors=errors,
-                usage=self._merge_usage(usage_parts),
-                model_telemetry=model_telemetry,
-                requirements=requirements,
-                plan_requirement_result=plan_requirement_result,
-                response_requirement_result=response_requirement_result,
-                plan_requirement_results=plan_requirement_results,
-                response_requirement_results=response_requirement_results,
-                evidence_bundle=evidence_bundle,
-                tool_argument_histories=tool_argument_histories,
-                answer_grounding_telemetry=answer_grounding_telemetry,
-                budget_ledger=governor.ledger.as_dict(),
-                answer_source=answer_source,
             )
-            try:
-                await self._store.save(record)
-            except Exception as store_error:
-                raise RuntimeExecutionError(run_id, "run and audit persistence failed") from store_error
-            raise RuntimeExecutionError(run_id) from exc
+            await self._persist_failure(state, "The research run could not be completed safely.")
+            raise RuntimeExecutionError(state.run_id) from exc
+
+    async def _plan_stage(self, state: _RunState) -> None:
+        """Plan (or host plan for tool-free tiers), validate, correct once, record denials."""
+
+        requirements = state.requirements
+        if self._routing_policy.allow_tools:
+            state.plan, state.tool_call_drafts, usage, telemetry = await self._create_plan(
+                state.run_id,
+                state.request,
+                state.profile,
+                requirements=requirements,
+                governor=state.governor,
+            )
+        else:
+            # Tool-free tiers (FAST) answer directly: a host-owned one-step plan, no plan call.
+            state.plan = TaskPlan(
+                goal=state.request.goal,
+                steps=[TaskStep(description="Answer directly without tools")],
+            )
+            state.tool_call_drafts, usage, telemetry = [], ModelUsage(), None
+        state.add_model_call(usage, telemetry)
+        result = self._validate_plan(state)
+        if not result.valid:
+            state.extend_tool_trace(*self._blocked_plan_proposals(state.tool_call_drafts, result))
+        if not result.valid and self._routing_policy.allow_revision:
+            state.plan, state.tool_call_drafts, usage, telemetry = await self._create_plan(
+                state.run_id,
+                state.request,
+                state.profile,
+                requirements=requirements,
+                correction=result,
+                governor=state.governor,
+            )
+            state.add_model_call(usage, telemetry)
+            result = self._validate_plan(state, correction_attempted=True)
+        if not result.valid:
+            state.errors.append(
+                ErrorDetail(
+                    code="tool_dispatch_blocked",
+                    message=(
+                        "The corrected plan did not satisfy capability requirements; "
+                        "no model-proposed tool call was dispatched."
+                    ),
+                    component="agent_runtime",
+                )
+            )
+            state.tool_call_drafts = []
+        recorded_denials = {item.tool_name for item in state.decisions if not item.allowed}
+        state.extend_tool_trace(
+            *self._policy_denials(set(requirements.forbidden_capabilities) - recorded_denials)
+        )
+
+    def _validate_plan(
+        self, state: _RunState, *, correction_attempted: bool = False
+    ) -> PlanRequirementResult:
+        assert state.plan is not None
+        result = validate_plan_requirements(
+            state.requirements,
+            state.plan,
+            self._tools.tools,
+            correction_attempted=correction_attempted,
+            proposed_capabilities=[item.tool_name for item in state.tool_call_drafts],
+        )
+        state.plan_requirement_result = result
+        state.plan_requirement_results.append(result)
+        return result
+
+    async def _tool_stage(self, state: _RunState) -> None:
+        """Validate/repair arguments, dispatch approved calls, and build evidence."""
+
+        (
+            state.tool_call_drafts,
+            state.tool_argument_histories,
+            argument_errors,
+            argument_usage,
+            argument_telemetry,
+        ) = await self._validate_tool_calls(
+            state.run_id,
+            state.tool_call_drafts,
+            state.profile,
+            state.requirements,
+            governor=state.governor,
+        )
+        state.errors.extend(argument_errors)
+        state.usage_parts.extend(argument_usage)
+        state.model_telemetry.extend(argument_telemetry)
+        assert state.plan is not None
+        state.plan, *trace = await self._execute_plan(
+            state.plan, state.tool_call_drafts, state.profile, governor=state.governor
+        )
+        state.extend_tool_trace(*trace)
+        state.evidence_bundle = build_evidence_bundle(state.tool_requests, state.tool_results)
+        state.evidence = self._references_from_bundle(state.evidence_bundle)
+        if state.requirements.requires_grounding and not state.evidence:
+            state.errors.append(
+                ErrorDetail(
+                    code="retrieval_returned_no_evidence",
+                    message="Approved retrieval completed without usable evidence.",
+                    component="agent_runtime",
+                )
+            )
+
+    async def _answer_stage(self, state: _RunState) -> None:
+        """Model answer, one bounded correction, then the labelled host fallback if eligible."""
+
+        draft, usage, telemetry = await self._model_answer(state)
+        state.add_model_call(usage, telemetry)
+        result = self._apply_answer(state, draft, AnswerSource.MODEL)
+        state.response_requirement_results.append(result)
+        if not result.valid and self._routing_policy.allow_revision:
+            draft, usage, telemetry = await self._model_answer(state, correction=result)
+            state.add_model_call(usage, telemetry)
+            result = self._apply_answer(
+                state, draft, AnswerSource.MODEL_CORRECTION, correction_attempted=True
+            )
+            state.response_requirement_results.append(result)
+        if not result.valid and state.evidence and _can_use_fallback_response(result):
+            draft = _fallback_answer_draft(
+                goal=state.request.goal,
+                evidence=state.evidence,
+                requirements=state.requirements,
+            )
+            result = self._apply_answer(
+                state, draft, AnswerSource.HOST_FALLBACK, correction_attempted=True
+            )
+            if len(state.response_requirement_results) >= 2:
+                state.response_requirement_results[-1] = result
+            else:
+                state.response_requirement_results.append(result)
+        state.answer_grounding_telemetry = {
+            "grounded_claim_count": len(state.answer_draft.claims),
+            "claims_with_evidence_count": sum(
+                bool(claim.evidence_ids) for claim in state.answer_draft.claims
+            ),
+            "unknown_evidence_reference_count": sum(
+                error.code == "invalid_citation" for error in state.errors
+            ),
+        }
+        if not result.valid:
+            state.errors.append(
+                ErrorDetail(
+                    code="response_repair_failed",
+                    message="The bounded answer repair did not satisfy response requirements.",
+                    component="agent_runtime",
+                )
+            )
+
+    async def _model_answer(
+        self, state: _RunState, *, correction: ResponseRequirementResult | None = None
+    ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
+        assert state.plan is not None
+        return await self._create_answer(
+            run_id=state.run_id,
+            request=state.request,
+            profile=state.profile,
+            plan=state.plan,
+            tool_results=state.tool_results,
+            evidence=state.evidence,
+            requirements=state.requirements,
+            correction=correction,
+            governor=state.governor,
+        )
+
+    def _apply_answer(
+        self,
+        state: _RunState,
+        draft: AnswerDraft,
+        source: AnswerSource,
+        *,
+        correction_attempted: bool = False,
+    ) -> ResponseRequirementResult:
+        """Render, resolve citations, run verification checks, and validate requirements."""
+
+        assert state.plan is not None
+        state.answer_draft = draft
+        state.answer_source = source
+        state.answer_text = self._augment_answer(
+            self._render_answer_draft(draft, state.evidence), state.tool_results
+        )
+        requested_ids = list(draft.cited_evidence_ids)
+        requested_ids.extend(
+            evidence_id for claim in draft.claims for evidence_id in claim.evidence_ids
+        )
+        state.citations, citation_errors = self._resolve_citations(requested_ids, state.evidence)
+        state.errors.extend(citation_errors)
+        uncited_claims = (
+            [claim.text for claim in draft.claims if not claim.evidence_ids]
+            if state.requirements.requires_grounding
+            else []
+        )
+        evaluation = self._evaluator.evaluate(
+            run_id=state.run_id,
+            request=state.request,
+            plan=state.plan,
+            answer=state.answer_text,
+            evidence=state.evidence,
+            citations=state.citations,
+            tool_requests=state.tool_requests,
+            tool_results=state.tool_results,
+            permission_decisions=state.decisions,
+            expectations=state.expectations,
+            unsupported_claims=list(state.known_unsupported_claims or []) + uncited_claims,
+        )
+        result = validate_response_requirements(
+            state.requirements,
+            answer=state.answer_text,
+            evidence=state.evidence,
+            citations=state.citations,
+            unsupported_claims=list(evaluation.unsupported_claims)
+            + _verification_failures(evaluation),
+            correction_attempted=correction_attempted,
+        )
+        state.response_requirement_result = result
+        return result
+
+    async def _final_evaluation(self, state: _RunState) -> None:
+        """Optional advisory critique, then the authoritative rule-based verdict."""
+
+        assert state.plan is not None
+        model_critique = None
+        if self._enable_model_critique:
+            model_critique, usage, telemetry = await self._create_critique(
+                run_id=state.run_id,
+                request=state.request,
+                profile=state.profile,
+                plan=state.plan,
+                tool_results=state.tool_results,
+                evidence=state.evidence,
+                answer=state.answer_text,
+                governor=state.governor,
+            )
+            if usage is not None:
+                state.usage_parts.append(usage)
+            if telemetry is not None:
+                state.model_telemetry.append(telemetry)
+        evaluation = self._evaluator.evaluate(
+            run_id=state.run_id,
+            request=state.request,
+            plan=state.plan,
+            answer=state.answer_text,
+            evidence=state.evidence,
+            citations=state.citations,
+            tool_requests=state.tool_requests,
+            tool_results=state.tool_results,
+            permission_decisions=state.decisions,
+            expectations=state.expectations,
+            unsupported_claims=state.known_unsupported_claims,
+            model_critique=model_critique,
+        )
+        result = state.response_requirement_result
+        if result is not None and not result.valid:
+            evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
+        state.evaluation = evaluation
+
+    async def _persist_failure(self, state: _RunState, answer: str) -> None:
+        if state.response is None:
+            state.response = AgentResponse(
+                request_id=state.request.request_id,
+                run_id=state.run_id,
+                status=RunStatus.FAILED,
+                answer=answer,
+                errors=state.errors,
+            )
+        try:
+            await self._store.save(self._state_record(state, RunStatus.FAILED))
+        except Exception as store_error:
+            raise RuntimeExecutionError(
+                state.run_id, "run and audit persistence failed"
+            ) from store_error
+
+    def _state_record(self, state: _RunState, status: RunStatus) -> RunRecord:
+        assert state.response is not None
+        return self._record(
+            run_id=state.run_id,
+            request=state.request,
+            profile=state.profile,
+            plan=state.plan,
+            tool_requests=state.tool_requests,
+            tool_results=state.tool_results,
+            decisions=state.decisions,
+            response=state.response,
+            evaluation=state.evaluation,
+            status=status,
+            started_at=state.started_at,
+            started_clock=state.started_clock,
+            errors=state.errors,
+            usage=self._merge_usage(state.usage_parts),
+            model_telemetry=state.model_telemetry,
+            requirements=state.requirements,
+            plan_requirement_result=state.plan_requirement_result,
+            response_requirement_result=state.response_requirement_result,
+            plan_requirement_results=state.plan_requirement_results,
+            response_requirement_results=state.response_requirement_results,
+            evidence_bundle=state.evidence_bundle,
+            tool_argument_histories=state.tool_argument_histories,
+            answer_grounding_telemetry=state.answer_grounding_telemetry,
+            budget_ledger=state.governor.ledger.as_dict(),
+            answer_source=state.answer_source,
+        )
 
     async def _create_plan(
         self,
