@@ -85,13 +85,13 @@ class ToolRegistry:
         if tool is None:
             return [f"unknown tool: {name}"]
         try:
-            tool.input_model.model_validate(dict(arguments))
+            validated = tool.input_model.model_validate(dict(arguments))
         except PydanticValidationError as exc:
             return [
                 f"{'.'.join(str(part) for part in error['loc']) or 'arguments'}: {error['msg']}"[:200]
                 for error in exc.errors()[:8]
             ]
-        return []
+        return [message[:200] for message in tool.preflight(validated)[:8]]
 
     def register(self, tool: BaseTool) -> None:
         """Register one tool, rejecting ambiguous duplicate names."""

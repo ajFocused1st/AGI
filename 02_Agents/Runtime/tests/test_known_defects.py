@@ -318,7 +318,10 @@ class UncertaintyClaimTests(unittest.IsolatedAsyncioTestCase):
                     ReadOnlyFileSearchConfig(roots=(SearchRoot(label="documents1", path=Path(documents)),))
                 )
             )
-            adapter = ScriptedModelAdapter([_plan(search), answer])
+            # The uncertain grounded answer gets one follow-up offer, which the model declines.
+            adapter = ScriptedModelAdapter(
+                [_plan(search), answer, ScriptedReply(content="", structured_output={"tool_calls": []})]
+            )
             runtime = AgentRuntime(
                 model_adapter=adapter,
                 tool_executor=registry,
@@ -340,7 +343,9 @@ class UncertaintyClaimTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertTrue(record.response_requirement_result.valid)
         self.assertEqual(record.evaluation.verdict.value, "passed")
-        self.assertEqual([request.metadata["phase"] for request in adapter.requests], ["plan", "answer"])
+        self.assertEqual(
+            [request.metadata["phase"] for request in adapter.requests], ["plan", "answer", "observe"]
+        )
 
 
 class DenialTimestampRegressionTests(unittest.TestCase):

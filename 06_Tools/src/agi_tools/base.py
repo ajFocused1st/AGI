@@ -111,6 +111,11 @@ class BaseTool(ABC, Generic[InputT, OutputT]):
             duration_ms=duration_ms,
         )
 
+    def preflight(self, tool_input: InputT) -> list[str]:
+        """Side-effect-free checks run before dispatch; return reasons the call would fail."""
+
+        return []
+
     @abstractmethod
     async def run(self, tool_input: InputT) -> OutputT:
         """Perform the tool-specific operation on validated input."""

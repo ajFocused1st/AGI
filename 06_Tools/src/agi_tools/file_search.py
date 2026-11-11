@@ -154,6 +154,7 @@ class FileSearchMatch(BaseModel):
     line_end: int = Field(ge=1)
     line_number: int = Field(ge=1)
     snippet: str
+    document_title: str | None = Field(default=None, max_length=200)
 
     @field_validator("relative_path")
     @classmethod
@@ -323,6 +324,7 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
                 line_end=unit.line_number,
                 line_number=unit.line_number,
                 snippet=self._snippet(unit.text, unit.match_location, len(tool_input.query)),
+                document_title=unit.heading_text,
             )
             for unit in ranked
         ]
@@ -506,6 +508,7 @@ class _LineUnit:
     line_terms: list[str]
     context_terms: set[str]
     document_terms: set[str]
+    heading_text: str | None = None
     coverage: int = 0
     score: float = 0.0
     match_location: int = 0
@@ -649,10 +652,13 @@ def _line_units(documents: list[_ScannedDocument]) -> list[_LineUnit]:
             if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
         }
         heading_terms: set[str] = set()
+        heading_text: str | None = None
         for line_number, line in enumerate(document.lines, start=1):
             stripped = line.strip()
             if not stripped:
                 continue
+            if stripped.startswith("#"):
+                heading_text = stripped.lstrip("#").strip()[:200] or None
             line_terms = [
                 _stem(token)
                 for token in _tokens(stripped)
@@ -668,6 +674,7 @@ def _line_units(documents: list[_ScannedDocument]) -> list[_LineUnit]:
                     line_terms=line_terms,
                     context_terms=(heading_terms | name_terms) - set(line_terms),
                     document_terms=heading_terms | name_terms,
+                    heading_text=heading_text,
                 )
             )
     return units

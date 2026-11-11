@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
+from decimal import Decimal
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -377,6 +378,8 @@ class AgentRuntime:
             state.profile,
             state.requirements,
             governor=state.governor,
+            known_numbers=_known_numbers(state),
+            can_defer=self._can_follow_up(state),
         )
         state.tool_argument_histories.extend(histories)
         state.errors.extend(argument_errors)
@@ -399,43 +402,60 @@ class AgentRuntime:
         the same as before.
         """
 
-        rounds = _FOLLOW_UP_ROUNDS.get(self._routing_policy.tier, 0)
-        if not self._routing_policy.allow_revision or state.dispatch_blocked:
-            return  # single-pass policy, or the plan was deliberately blocked from dispatch
-        for _ in range(rounds):
+        # single-pass policies and deliberately blocked plans never follow up
+        while self._can_follow_up(state):
             gaps = self._evidence_gaps(state)
-            if not gaps:
+            if not gaps or not await self._follow_up_round(state, gaps):
                 return
-            budget = self._routing_policy.budget
-            # Keep one model call for the answer.
-            if budget.max_model_calls - state.governor.ledger.model_attempts < 2:
-                return
-            tool_slots = min(
-                state.profile.max_tool_calls,
-                budget.max_tool_calls,
-                state.requirements.maximum_tool_calls
-                if state.requirements.maximum_tool_calls is not None
-                else budget.max_tool_calls,
-            ) - state.governor.ledger.tool_attempts
-            if tool_slots <= 0:
-                return
-            proposals, usage, telemetry = await self._create_follow_up(state, gaps, tool_slots)
-            state.add_model_call(usage, telemetry)
-            state.follow_up_rounds += 1
-            if not proposals:
-                return
-            allowed = self._allowed_capabilities(state)
-            blocked = {item.tool_name for item in proposals if item.tool_name not in allowed}
-            if blocked:
-                state.extend_tool_trace(
-                    *self._denied_proposals(
-                        proposals, blocked, "Follow-up proposed a capability that is not permitted."
-                    )
+
+    def _calls_left(self, state: _RunState) -> int:
+        return self._routing_policy.budget.max_model_calls - state.governor.ledger.model_attempts
+
+    async def _follow_up_round(self, state: _RunState, gaps: list[str]) -> bool:
+        """One observe call plus dispatch of permitted proposals; True if evidence grew."""
+
+        budget = self._routing_policy.budget
+        if self._calls_left(state) < 2:  # keep one model call for the answer
+            return False
+        tool_slots = min(
+            state.profile.max_tool_calls,
+            budget.max_tool_calls,
+            state.requirements.maximum_tool_calls
+            if state.requirements.maximum_tool_calls is not None
+            else budget.max_tool_calls,
+        ) - state.governor.ledger.tool_attempts
+        if tool_slots <= 0:
+            return False
+        proposals, usage, telemetry = await self._create_follow_up(state, gaps, tool_slots)
+        state.add_model_call(usage, telemetry)
+        state.follow_up_rounds += 1
+        if not proposals:
+            return False
+        allowed = self._allowed_capabilities(state)
+        blocked = {item.tool_name for item in proposals if item.tool_name not in allowed}
+        if blocked:
+            state.extend_tool_trace(
+                *self._denied_proposals(
+                    proposals, blocked, "Follow-up proposed a capability that is not permitted."
                 )
-            permitted = [item for item in proposals if item.tool_name in allowed][:tool_slots]
-            if not permitted:
-                return
-            await self._dispatch(state, permitted)
+            )
+        permitted = [item for item in proposals if item.tool_name in allowed][:tool_slots]
+        if not permitted:
+            return False
+        # Evidence ids are regenerated on every rebuild, so compare by content.
+        def content(items: list[EvidenceReference]) -> set[tuple[str, str | None, str | None]]:
+            return {(item.source_id, item.locator, item.excerpt) for item in items}
+
+        before = content(state.evidence)
+        await self._dispatch(state, permitted)
+        return bool(content(state.evidence) - before)
+
+    def _can_follow_up(self, state: _RunState) -> bool:
+        return (
+            _FOLLOW_UP_ROUNDS.get(self._routing_policy.tier, 0) > state.follow_up_rounds
+            and self._routing_policy.allow_revision
+            and not state.dispatch_blocked
+        )
 
     def _allowed_capabilities(self, state: _RunState) -> set[str]:
         requirements = state.requirements
@@ -539,7 +559,26 @@ class AgentRuntime:
         state.add_model_call(usage, telemetry)
         result = self._apply_answer(state, draft, AnswerSource.MODEL)
         state.response_requirement_results.append(result)
-        if not result.valid and self._routing_policy.allow_revision:
+        if (
+            state.requirements.requires_grounding
+            and self._can_follow_up(state)
+            and (draft.insufficient_evidence or contains_uncertainty_statement(state.answer_text))
+        ):
+            # Multi-hop: the answer itself reports a missing fact (e.g. a bridging hop).
+            # One follow-up round; re-answer only if it produced new evidence.
+            gap = "the draft answer reports missing information: " + " ".join(
+                state.answer_text.split()
+            )[:240]
+            if await self._follow_up_round(state, [gap]) and self._calls_left(state) >= 1:
+                draft, usage, telemetry = await self._model_answer(state, phase="answer_followup")
+                state.add_model_call(usage, telemetry)
+                result = self._apply_answer(state, draft, AnswerSource.MODEL)
+                state.response_requirement_results[-1] = result
+        if (
+            not result.valid
+            and self._routing_policy.allow_revision
+            and self._calls_left(state) >= 1
+        ):
             draft, usage, telemetry = await self._model_answer(state, correction=result)
             state.add_model_call(usage, telemetry)
             result = self._apply_answer(
@@ -582,7 +621,11 @@ class AgentRuntime:
             )
 
     async def _model_answer(
-        self, state: _RunState, *, correction: ResponseRequirementResult | None = None
+        self,
+        state: _RunState,
+        *,
+        correction: ResponseRequirementResult | None = None,
+        phase: str | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         assert state.plan is not None
         return await self._create_answer(
@@ -595,6 +638,7 @@ class AgentRuntime:
             requirements=state.requirements,
             correction=correction,
             governor=state.governor,
+            phase=phase,
         )
 
     def _apply_answer(
@@ -659,7 +703,7 @@ class AgentRuntime:
 
         assert state.plan is not None
         model_critique = None
-        if self._enable_model_critique:
+        if self._enable_model_critique and self._calls_left(state) >= 1:
             model_critique, usage, telemetry = await self._create_critique(
                 run_id=state.run_id,
                 request=state.request,
@@ -990,6 +1034,8 @@ class AgentRuntime:
         profile: AgentProfile,
         requirements: TaskRequirements,
         governor: BudgetGovernor,
+        known_numbers: set[str] | None = None,
+        can_defer: bool = False,
     ) -> tuple[
         list[ToolCallDraft],
         list[ToolArgumentRepairHistory],
@@ -1006,11 +1052,17 @@ class AgentRuntime:
             definition = self._tools.tools.get(proposal.tool_name)
             if definition is None:
                 continue
-            initial = self._validate_arguments(definition, proposal.arguments, requirements)
+            initial = self._validate_arguments(
+                definition, proposal.arguments, requirements, known_numbers=known_numbers
+            )
+            deferred = can_defer and _only_ungrounded_operands(initial)
             if not initial.valid and (
-                proposal.tool_name not in requirements.required_capabilities
+                deferred
+                or proposal.tool_name not in requirements.required_capabilities
                 or not self._routing_policy.allow_revision
             ):
+                # Deferred calculations are not repaired now: their operands only become
+                # known from evidence, so the observe round proposes them instead.
                 histories.append(
                     ToolArgumentRepairHistory(
                         tool_name=proposal.tool_name,
@@ -1043,6 +1095,7 @@ class AgentRuntime:
                         repaired.arguments,
                         requirements,
                         repair_attempted=True,
+                        known_numbers=known_numbers,
                     )
                 except Exception:
                     repaired_result = initial.model_copy(
@@ -1081,17 +1134,23 @@ class AgentRuntime:
         requirements: TaskRequirements,
         *,
         repair_attempted: bool = False,
+        known_numbers: set[str] | None = None,
     ) -> ToolArgumentValidationResult:
         """Schema and semantic checks, plus the tool's own input model when the executor
-        exposes it, so malformed calls are never dispatched (and never fail at runtime)."""
+        exposes it, so malformed calls are never dispatched (and never fail at runtime).
+        Calculator operands must come from the goal or retrieved evidence."""
 
         result = validate_tool_arguments(
             definition, arguments, requirements, repair_attempted=repair_attempted
         )
         validate = getattr(self._tools, "validate_arguments", None)
-        if not result.valid or validate is None:
+        if not result.valid:
             return result
-        input_errors = list(validate(definition.name, arguments))
+        input_errors = list(validate(definition.name, arguments)) if validate is not None else []
+        if definition.name == "calculator" and known_numbers is not None:
+            ungrounded = _ungrounded_operands(str(arguments.get("expression", "")), known_numbers)
+            if ungrounded:
+                input_errors.append(UNGROUNDED_OPERANDS + ", ".join(ungrounded))
         if not input_errors:
             return result
         return result.model_copy(
@@ -1172,7 +1231,9 @@ class AgentRuntime:
         requirements: TaskRequirements | None = None,
         correction: ResponseRequirementResult | None = None,
         governor: BudgetGovernor,
+        phase: str | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
+        phase = phase or ("answer_correction" if correction is not None else "answer")
         model_request = ModelRequest(
             model=profile.model,
             messages=[
@@ -1215,11 +1276,10 @@ class AgentRuntime:
             temperature=0,
             max_tokens=4096,
             metadata={
-                "phase": "answer_correction" if correction is not None else "answer",
+                "phase": phase,
                 "run_id": str(run_id),
             },
         )
-        phase = "answer_correction" if correction is not None else "answer"
         governor.reserve_model_call(phase, model_request)
         model_response = await self._model.generate(model_request)
         governor.record_model_usage(
@@ -1501,6 +1561,42 @@ class AgentRuntime:
                 sum(costs) if costs and all(cost is not None for cost in costs) else None
             ),
         )
+
+
+UNGROUNDED_OPERANDS = "calculator operands are not in the goal or retrieved evidence: "
+_NEUTRAL_CONSTANTS = frozenset({"0", "1", "2", "100"})
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _canonical_number(text: str) -> str:
+    value = Decimal(text)
+    return str(int(value)) if value == value.to_integral_value() else str(value.normalize())
+
+
+def _numbers_in(text: str) -> set[str]:
+    return {_canonical_number(match) for match in _NUMBER.findall(text.replace(",", ""))}
+
+
+def _known_numbers(state: _RunState) -> set[str]:
+    """Numbers the task or retrieved evidence supplies; calculator operands must come from here."""
+
+    known = _numbers_in(state.request.goal) | _NEUTRAL_CONSTANTS
+    for item in state.evidence:
+        known |= _numbers_in(item.excerpt or "")
+    for result in state.tool_results:
+        if result.success and result.tool_name == "calculator":
+            known |= _numbers_in(str(result.output.get("value", "")))
+    return known
+
+
+def _ungrounded_operands(expression: str, known: set[str]) -> list[str]:
+    return sorted(_numbers_in(expression) - known)
+
+
+def _only_ungrounded_operands(result: ToolArgumentValidationResult) -> bool:
+    return not result.valid and bool(result.validation_messages) and all(
+        message.startswith(UNGROUNDED_OPERANDS) for message in result.validation_messages
+    )
 
 
 def _readable_documents(evidence: list[EvidenceReference]) -> list[dict[str, str]]:

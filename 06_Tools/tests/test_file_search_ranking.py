@@ -60,6 +60,10 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
     async def test_summary_request_returns_an_overview(self) -> None:
         self.assertGreaterEqual(len(await self.search("Summarize the local documents")), 4)
 
+    async def test_matches_carry_their_document_title(self) -> None:
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="How long did the Summit audit last?"))
+        self.assertEqual(output.matches[0].document_title, "Summit Depot")
+
     async def test_content_lines_rank_before_headings(self) -> None:
         snippets = await self.search("Harbor")
         self.assertFalse(snippets[0].startswith("#"))

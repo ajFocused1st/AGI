@@ -354,7 +354,11 @@ class RuleBasedEvaluator:
         cited_tokens = _concrete_tokens(cited_text)
         supported = sorted(answer_tokens & cited_tokens)
         minimum_overlap = min(len(answer_tokens), max(2, (len(answer_tokens) + 1) // 2))
-        cited_words = set(re.findall(r"[a-z0-9][a-z0-9_-]*", cited_text.casefold()))
+        # A cited line's document title (e.g. "Cedar Initiative") is part of its provenance.
+        titles = " ".join(
+            str(item.metadata.get("document_title", "")) for item in document_items
+        )
+        cited_words = set(re.findall(r"[a-z0-9][a-z0-9_-]*", f"{cited_text} {titles}".casefold()))
         missing_entities = sorted(_answer_entity_terms(answer_for_support) - cited_words)
         # Dates and multi-digit numbers are high-risk facts: each must appear in cited
         # evidence (documents or calculator results), however many other words overlap.

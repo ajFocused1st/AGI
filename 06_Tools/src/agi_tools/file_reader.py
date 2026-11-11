@@ -141,6 +141,21 @@ class ReadOnlyFileReader(BaseTool[ReadOnlyFileReaderInput, ReadOnlyFileReaderOut
     async def run(self, tool_input: ReadOnlyFileReaderInput) -> ReadOnlyFileReaderOutput:
         return await asyncio.to_thread(self._read_sync, tool_input)
 
+    def preflight(self, tool_input: ReadOnlyFileReaderInput) -> list[str]:
+        """Reject guessed roots or paths before dispatch, using the same safety checks."""
+
+        root = self._roots.get(tool_input.root_label.casefold())
+        if root is None:
+            known = ", ".join(sorted(prepared.label for prepared in self._roots.values()))
+            return [f"root_label: unknown configured root (known: {known})"]
+        candidate = root.path.joinpath(*tool_input.relative_path.split("/"))
+        safe_candidate = self._safe_resolved_file(candidate, root)
+        if safe_candidate is None:
+            return ["relative_path: file is unavailable or outside the configured root"]
+        if safe_candidate.suffix.casefold() not in self.config.allowed_extensions:
+            return ["relative_path: file extension is not readable by this tool"]
+        return []
+
     def _read_sync(self, tool_input: ReadOnlyFileReaderInput) -> ReadOnlyFileReaderOutput:
         root = self._roots.get(tool_input.root_label.casefold())
         if root is None:

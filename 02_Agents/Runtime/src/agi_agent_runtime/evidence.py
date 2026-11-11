@@ -42,6 +42,7 @@ def build_evidence_bundle(
             excerpt = _sanitize_excerpt(str(match.get("snippet", "")))
             if not excerpt:
                 continue
+            title = match.get("document_title")
             items.append(
                 EvidenceItem(
                     source_id=str(match["source_id"]),
@@ -53,6 +54,11 @@ def build_evidence_bundle(
                         "relative_path": str(match.get("relative_path", "")),
                         "line_start": int(match.get("line_start", 1)),
                         "line_end": int(match.get("line_end", 1)),
+                        **(
+                            {"document_title": _sanitize_excerpt(title)[:200]}
+                            if isinstance(title, str) and title.strip()
+                            else {}
+                        ),
                     },
                 )
             )
@@ -101,10 +107,13 @@ def _reader_evidence_items(result: ToolResult) -> list[EvidenceItem]:
     relative_path = str(output.get("relative_path", ""))
     query = f"{relative_path}:{first_line}"
     items: list[EvidenceItem] = []
+    title: str | None = None
     for offset, line in enumerate(content.splitlines()):
         excerpt = _sanitize_excerpt(line)
         if not excerpt:
             continue
+        if excerpt.startswith("#"):
+            title = excerpt.lstrip("#").strip()[:200] or None
         line_number = first_line + offset
         items.append(
             EvidenceItem(
@@ -117,6 +126,7 @@ def _reader_evidence_items(result: ToolResult) -> list[EvidenceItem]:
                     "relative_path": relative_path,
                     "line_start": line_number,
                     "line_end": line_number,
+                    **({"document_title": title} if title else {}),
                 },
             )
         )

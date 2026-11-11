@@ -110,5 +110,39 @@ class GradingRegressionTests(DateEquivalenceTests):
             self.assertFalse(self._supported_all(answer), answer)
 
 
+class DocumentTitleProvenanceTests(unittest.TestCase):
+    """Checkpoint C held-out 06: 'Cedar Initiative' comes from the cited line's document title."""
+
+    def _supported(self, answer: str, title: str | None) -> bool:
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        evidence = EvidenceReference(
+            evidence_id=uuid4(),
+            source_id="d:cedar.md",
+            source_path="cedar.md",
+            excerpt="[C2] During its pilot, Cedar analyzed 240 specimens.",
+            metadata={"document_title": title} if title else {},
+        )
+        supported, _ = RuleBasedEvaluator._document_claim_support(
+            answer=answer,
+            evidence=[evidence],
+            citations=[Citation(evidence_id=evidence.evidence_id, label="c")],
+        )
+        return supported
+
+    def test_title_words_count_as_cited_provenance(self) -> None:
+        answer = "During its pilot, the Cedar Initiative analyzed 240 specimens."
+        self.assertTrue(self._supported(answer, "Cedar Initiative"))
+        self.assertFalse(self._supported(answer, None))
+
+    def test_wrong_name_still_fails_with_a_title(self) -> None:
+        self.assertFalse(
+            self._supported("During its pilot, the Cedar Program analyzed 240 specimens.", "Cedar Initiative")
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

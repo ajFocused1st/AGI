@@ -167,9 +167,12 @@ class GoldenScriptedAdapter:
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
         phase = str(request.metadata["phase"])
-        if phase not in self._script:
+        if phase == "observe" and phase not in self._script:
+            reply: Any = {"tool_calls": []}  # the scripted model declines follow-ups by default
+        elif phase not in self._script:
             raise LookupError(f"unscripted phase: {phase}")
-        reply = self._script[phase]
+        else:
+            reply = self._script[phase]
         if callable(reply):
             payload = json.loads(request.messages[-1].content)
             reply = reply(payload.get("evidence", []))
