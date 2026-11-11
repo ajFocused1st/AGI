@@ -45,7 +45,7 @@ class LiveBenchmarkTests(unittest.TestCase):
         from operator_research_engine.live_benchmark import _settings_for_live_run
 
         workspace = Path(__file__).resolve().parents[3]
-        for name in ("live_reliability_v1", "live_reliability_holdout_v1"):
+        for name in ("live_reliability_v1", "live_reliability_holdout_v1", "live_multihop_v1"):
             definition = json.loads(
                 (workspace / "10_Benchmarks" / "Definitions" / f"{name}.json").read_text(encoding="utf-8")
             )

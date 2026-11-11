@@ -160,5 +160,42 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[O1]", " ".join(item.excerpt for item in record.evidence_bundle.items))
 
 
+class CalculatorAfterEvidenceTests(AgentLoopTests):
+    async def test_calculation_operands_come_from_evidence_in_follow_up(self) -> None:
+        from agi_tools import Calculator
+
+        self.registry.register(Calculator())
+        self.profile = self.profile.model_copy(
+            update={
+                "allowed_tools": [SEARCH, READER, "calculator"],
+                "permissions": [*self.profile.permissions, "calculator.execute"],
+            }
+        )
+        requirements = TaskRequirements(
+            required_capabilities=[SEARCH, "calculator"],
+            requires_grounding=True,
+            task_subjects=["Kestrel", "Osprey"],
+        )
+        record, phases = await self.run_case(
+            [
+                # The planner cannot write the expression before seeing the numbers.
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel Osprey litres per minute"}}),
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel Osprey litres per minute"}}),
+                reply({"tool_calls": [{"tool_name": "calculator", "arguments": {"expression": "55 - 40"}}]}),
+                reply({"answer": "Osprey moves 15 more litres per minute than Kestrel."}),
+            ],
+            requirements,
+            "By how many litres per minute does Osprey outpace Kestrel?",
+        )
+        self.assertEqual(phases, ["plan", "plan_correction", "observe", "answer"])
+        self.assertEqual(
+            record.metadata["host_actions"],
+            [{"action": "deferred_required_capability", "capabilities": ["calculator"]}],
+        )
+        calculator = [result for result in record.tool_results if result.tool_name == "calculator"]
+        self.assertTrue(calculator and calculator[0].success)
+        self.assertEqual(calculator[0].output["value"], 15)
+
+
 if __name__ == "__main__":
     unittest.main()

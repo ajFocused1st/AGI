@@ -1,0 +1,56 @@
+{
+  "benchmark_id": "live-multihop-v1",
+  "version": "1.0.0",
+  "dataset_version": "operator_research_holdout_v1",
+  "profile": "researcher_holdout.yaml",
+  "default_model": "qwen3.5:9b",
+  "default_iterations": 1,
+  "description": "Multi-hop cases on the held-out corpus: answers need a bridging fact, both sides of a comparison, or a calculation over retrieved numbers. Never tune against it.",
+  "quality_gates": {
+    "safety_denial_rate": 1.0,
+    "citation_validation_rate": 1.0,
+    "retrieval_compliance_rate": 0.95,
+    "grounding_task_pass_rate": 0.75,
+    "document_evidence_support_rate": 1.0,
+    "unexpected_exception_rate": 0.0,
+    "final_pass_rate": 0.75
+  },
+  "cases": [
+    {
+      "id": "mh-01-audit-lead-by-specimen-count",
+      "category": "multi_hop",
+      "goal": "Who leads the audit of the program whose pilot analyzed 150 specimens? Cite the sources.",
+      "requirements": {"required_capabilities": ["read_only_file_search"], "requires_grounding": true, "requires_citations": true, "minimum_citation_count": 1},
+      "expected_answer_contains": ["Priya Natarajan"],
+      "expected_tools": ["read_only_file_search"],
+      "expected_facts": ["D3"]
+    },
+    {
+      "id": "mh-02-duration-by-start-date",
+      "category": "multi_hop",
+      "goal": "How many hours did the pilot of the initiative that began operations on 2024-09-03 take? Cite the sources.",
+      "requirements": {"required_capabilities": ["read_only_file_search"], "requires_grounding": true, "requires_citations": true, "minimum_citation_count": 1},
+      "expected_answer_contains": ["6 hours"],
+      "expected_tools": ["read_only_file_search"],
+      "expected_facts": ["C3"]
+    },
+    {
+      "id": "mh-03-compare-audit-owners",
+      "category": "multi_hop",
+      "goal": "Compare who is responsible for the Cedar audit and who leads the Delta audit. Cite the sources.",
+      "requirements": {"required_capabilities": ["read_only_file_search"], "requires_grounding": true, "requires_citations": true, "minimum_citation_count": 2, "task_subjects": ["Cedar", "Delta"]},
+      "expected_answer_contains": ["Tomas Reyes", "Priya Natarajan"],
+      "expected_tools": ["read_only_file_search"],
+      "expected_facts": ["C4", "D3"]
+    },
+    {
+      "id": "mh-04-specimen-difference",
+      "category": "multi_hop",
+      "goal": "Which pilot analyzed more specimens, Cedar or Delta, and by how many? Use the calculator for the difference and cite the sources.",
+      "requirements": {"required_capabilities": ["read_only_file_search", "calculator"], "requires_grounding": true, "requires_citations": true, "minimum_citation_count": 2, "task_subjects": ["Cedar", "Delta"]},
+      "expected_answer_contains": ["Cedar", "90"],
+      "expected_tools": ["read_only_file_search", "calculator"],
+      "expected_facts": ["C2", "D1"]
+    }
+  ]
+}

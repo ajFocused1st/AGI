@@ -116,6 +116,7 @@ class _RunState:
     host_actions: list[dict[str, Any]] = field(default_factory=list)
     follow_up_rounds: int = 0
     observed_result_count: int = 0
+    dispatch_blocked: bool = False
 
     def add_model_call(self, usage: ModelUsage, telemetry: dict[str, Any] | None) -> None:
         self.usage_parts.append(usage)
@@ -259,7 +260,28 @@ class AgentRuntime:
             state.add_model_call(usage, telemetry)
             result = self._validate_plan(state, correction_attempted=True)
         host_retrieval = self._host_required_retrieval(state, result)
-        if host_retrieval is not None:
+        only_missing = (
+            not result.valid
+            and not result.forbidden_capabilities_proposed
+            and not result.unknown_capabilities_proposed
+            and not any("exceed" in message for message in result.validation_messages)
+        )
+        if (
+            host_retrieval is None
+            and only_missing
+            and state.tool_call_drafts
+            and _FOLLOW_UP_ROUNDS.get(self._routing_policy.tier, 0) > 0
+            and self._routing_policy.allow_revision
+        ):
+            # Dispatch the valid calls; the observe step can supply the missing capability
+            # once evidence exists (e.g. a calculation whose operands come from documents).
+            state.host_actions.append(
+                {
+                    "action": "deferred_required_capability",
+                    "capabilities": list(result.missing_capabilities),
+                }
+            )
+        elif host_retrieval is not None:
             # The plan stays recorded as invalid (the model's miss); the host performs only
             # the required read-only search, labelled and auditable.
             state.tool_call_drafts = [host_retrieval]
@@ -278,6 +300,7 @@ class AgentRuntime:
                 )
             )
             state.tool_call_drafts = []
+            state.dispatch_blocked = True
         recorded_denials = {item.tool_name for item in state.decisions if not item.allowed}
         state.extend_tool_trace(
             *self._policy_denials(set(requirements.forbidden_capabilities) - recorded_denials)
@@ -377,6 +400,8 @@ class AgentRuntime:
         """
 
         rounds = _FOLLOW_UP_ROUNDS.get(self._routing_policy.tier, 0)
+        if not self._routing_policy.allow_revision or state.dispatch_blocked:
+            return  # single-pass policy, or the plan was deliberately blocked from dispatch
         for _ in range(rounds):
             gaps = self._evidence_gaps(state)
             if not gaps:
@@ -434,6 +459,12 @@ class AgentRuntime:
         for subject in state.requirements.task_subjects:
             if state.evidence and subject.casefold() not in haystack:
                 gaps.append(f"no evidence mentions {subject}")
+        # e.g. a calculation whose operands only become known from retrieved evidence.
+        for capability in state.requirements.required_capabilities:
+            if capability in self._allowed_capabilities(state) and not any(
+                result.tool_name == capability and result.success for result in state.tool_results
+            ):
+                gaps.append(f"required capability {capability} has not produced a result yet")
         return gaps
 
     async def _create_follow_up(
