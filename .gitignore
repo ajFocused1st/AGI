@@ -48,3 +48,4 @@ Thumbs.db
 Sandbox/*
 !Sandbox/README.md
 !Sandbox/.gitignore
+12_Documents/**
