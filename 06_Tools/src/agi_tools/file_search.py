@@ -94,6 +94,9 @@ class ReadOnlyFileSearchConfig(BaseModel):
     max_files_scanned: int = Field(default=1_000, ge=1, le=10_000)
     max_directories_scanned: int = Field(default=1_000, ge=1, le=10_000)
     max_snippet_chars: int = Field(default=400, ge=80, le=1_000)
+    # A matched question line carries the lines after it (its options and solution).
+    question_context_lines: int = Field(default=4, ge=0, le=10)
+    question_context_chars: int = Field(default=400, ge=0, le=1_000)
     case_sensitive: bool = False
     sensitive_names: frozenset[str] = DEFAULT_SENSITIVE_NAMES
     sensitive_suffixes: frozenset[str] = DEFAULT_SENSITIVE_SUFFIXES
@@ -314,20 +317,23 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
         ranked, more_available = _rank_lines(
             documents, tool_input.query, limit=effective_limit, case_sensitive=self.config.case_sensitive
         )
-        matches = [
-            FileSearchMatch(
-                source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
-                root_label=unit.document.root_label,
-                relative_path=unit.document.relative_path,
-                content_sha256=unit.document.content_sha256,
-                line_start=unit.line_number,
-                line_end=unit.line_number,
-                line_number=unit.line_number,
-                snippet=self._snippet(unit.text, unit.match_location, len(tool_input.query)),
-                document_title=unit.heading_text,
+        matches = []
+        for unit in ranked:
+            snippet = self._snippet(unit.text, unit.match_location, len(tool_input.query))
+            context, line_end = self._question_context(unit)
+            matches.append(
+                FileSearchMatch(
+                    source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
+                    root_label=unit.document.root_label,
+                    relative_path=unit.document.relative_path,
+                    content_sha256=unit.document.content_sha256,
+                    line_start=unit.line_number,
+                    line_end=line_end,
+                    line_number=unit.line_number,
+                    snippet=f"{snippet} {context}" if context else snippet,
+                    document_title=unit.heading_text,
+                )
             )
-            for unit in ranked
-        ]
         return FileSearchOutput(
             query=tool_input.query,
             matches=matches,
@@ -434,6 +440,34 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
         except UnicodeDecodeError:
             return None
         return content, hashlib.sha256(raw).hexdigest()
+
+    def _question_context(self, unit: "_LineUnit") -> tuple[str, int]:
+        """Following lines of a matched question, so its answer travels with it.
+
+        Exercises and FAQs put the answer right after the question line; a single
+        line would carry only the question. Stops at the next question or heading.
+        """
+
+        if "?" not in unit.text or self.config.question_context_lines == 0:
+            return "", unit.line_number
+        parts: list[str] = []
+        used = 0
+        line_end = unit.line_number
+        lines = unit.document.lines
+        index = unit.line_number  # 0-based index of the next line
+        while index < len(lines) and len(parts) < self.config.question_context_lines:
+            stripped = " ".join(lines[index].strip().split())
+            index += 1
+            if not stripped:
+                continue
+            if "?" in stripped or stripped.startswith("#"):
+                break
+            if used + len(stripped) + 1 > self.config.question_context_chars:
+                break
+            parts.append(stripped)
+            used += len(stripped) + 1
+            line_end = index
+        return " ".join(parts), line_end
 
     def _snippet(self, line: str, match_start: int, query_length: int) -> str:
         clean_line = " ".join(line.strip().split())

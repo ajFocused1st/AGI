@@ -38,6 +38,29 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         output = await self.tool.run(ReadOnlyFileSearchInput(query=query))
         return [match.snippet for match in output.matches]
 
+    async def test_question_line_carries_its_solution(self) -> None:
+        (Path(self._temporary.name) / "exercises.txt").write_text(
+            "Which gauge readings are consistent with the meter?\n"
+            "(a) 2 bar, 2.0 bar\n"
+            "Solution\n"
+            "The meter can give 2.0 bar.\n"
+            "Which gauge readings fit the dial?\n"
+            "(a) 4 bar\n",
+            encoding="utf-8",
+        )
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="gauge readings consistent meter"))
+        match = output.matches[0]
+        self.assertEqual(
+            match.snippet,
+            "Which gauge readings are consistent with the meter? (a) 2 bar, 2.0 bar Solution "
+            "The meter can give 2.0 bar.",
+        )
+        self.assertEqual((match.line_start, match.line_end), (1, 4))  # stops before next question
+
+    async def test_statement_lines_get_no_extra_context(self) -> None:
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="When did Harbor Depot open?"))
+        self.assertEqual(output.matches[0].line_end, output.matches[0].line_start)
+
     async def test_heading_context_matches_lines_that_omit_the_subject(self) -> None:
         self.assertIn("That audit lasted 3 days.", await self.search("How long did the Summit audit last?"))
 

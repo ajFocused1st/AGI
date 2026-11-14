@@ -379,6 +379,7 @@ class AgentRuntime:
             state.requirements,
             governor=state.governor,
             known_numbers=_known_numbers(state),
+            known_terms=_known_terms(state),
             can_defer=self._can_follow_up(state),
         )
         state.tool_argument_histories.extend(histories)
@@ -1036,6 +1037,7 @@ class AgentRuntime:
         governor: BudgetGovernor,
         known_numbers: set[str] | None = None,
         can_defer: bool = False,
+        known_terms: set[str] | None = None,
     ) -> tuple[
         list[ToolCallDraft],
         list[ToolArgumentRepairHistory],
@@ -1053,7 +1055,11 @@ class AgentRuntime:
             if definition is None:
                 continue
             initial = self._validate_arguments(
-                definition, proposal.arguments, requirements, known_numbers=known_numbers
+                definition,
+                proposal.arguments,
+                requirements,
+                known_numbers=known_numbers,
+                known_terms=known_terms,
             )
             deferred = can_defer and _only_ungrounded_operands(initial)
             if not initial.valid and (
@@ -1096,6 +1102,7 @@ class AgentRuntime:
                         requirements,
                         repair_attempted=True,
                         known_numbers=known_numbers,
+                        known_terms=known_terms,
                     )
                 except Exception:
                     repaired_result = initial.model_copy(
@@ -1135,10 +1142,12 @@ class AgentRuntime:
         *,
         repair_attempted: bool = False,
         known_numbers: set[str] | None = None,
+        known_terms: set[str] | None = None,
     ) -> ToolArgumentValidationResult:
         """Schema and semantic checks, plus the tool's own input model when the executor
         exposes it, so malformed calls are never dispatched (and never fail at runtime).
-        Calculator operands must come from the goal or retrieved evidence."""
+        Calculator operands must come from the goal or retrieved evidence; search queries
+        must share at least one content word with the goal or retrieved evidence."""
 
         result = validate_tool_arguments(
             definition, arguments, requirements, repair_attempted=repair_attempted
@@ -1151,6 +1160,10 @@ class AgentRuntime:
             ungrounded = _ungrounded_operands(str(arguments.get("expression", "")), known_numbers)
             if ungrounded:
                 input_errors.append(UNGROUNDED_OPERANDS + ", ".join(ungrounded))
+        if definition.name == "read_only_file_search" and known_terms:
+            query_terms = _content_terms(str(arguments.get("query", "")))
+            if query_terms and not query_terms & known_terms:
+                input_errors.append(OFF_TOPIC_QUERY)
         if not input_errors:
             return result
         return result.model_copy(
@@ -1586,6 +1599,49 @@ def _known_numbers(state: _RunState) -> set[str]:
     for result in state.tool_results:
         if result.success and result.tool_name == "calculator":
             known |= _numbers_in(str(result.output.get("value", "")))
+    return known
+
+
+OFF_TOPIC_QUERY = (
+    "search query shares no words with the goal or retrieved evidence; "
+    "search for terms from the goal"
+)
+# Function words and search-instruction words: sharing only these is not relevance.
+_NON_CONTENT_WORDS = frozenset(
+    "about after all also and any are been but can contain containing contains content "
+    "contents could data detail details did does document documents each file files find "
+    "for from give has have how information into its line lines local look more not "
+    "only other search show some text than that the their them then there these they "
+    "this those what when where which who why will with word words would your".split()
+)
+
+
+def _content_terms(text: str) -> set[str]:
+    """Lower-cased content words (3+ letters or any digit run), lightly stemmed."""
+
+    terms: set[str] = set()
+    for token in re.findall(r"[a-z0-9]+", text.casefold()):
+        if token in _NON_CONTENT_WORDS or (len(token) < 3 and not token.isdigit()):
+            continue
+        for suffix in ("ing", "es", "ed", "s"):
+            if len(token) > len(suffix) + 2 and token.endswith(suffix):
+                token = token[: -len(suffix)]
+                break
+        terms.add(token)
+    return terms
+
+
+def _known_terms(state: _RunState) -> set[str]:
+    """Words the goal or retrieved evidence supplies; a follow-up search must share one.
+
+    Empty before any evidence exists, so first searches may still use synonyms the goal
+    lacks; only follow-up searches must build on the goal or what was found."""
+
+    if not state.evidence:
+        return set()
+    known = _content_terms(state.request.goal)
+    for item in state.evidence:
+        known |= _content_terms(item.excerpt or "")
     return known
 
 
