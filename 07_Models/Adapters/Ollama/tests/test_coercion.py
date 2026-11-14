@@ -94,6 +94,23 @@ class CoercionTests(unittest.TestCase):
         with self.assertRaises(OllamaResponseValidationError):
             parse_structured_output(raw, SCHEMA)
 
+    def test_incomplete_step_is_dropped_when_others_remain(self) -> None:
+        # Live, real-documents run: steps[1] arrived without its required description.
+        raw = json.dumps(
+            {
+                "steps": [{"description": "Search for perception of visual images."}, {"step_id": 2}],
+                "tool_calls": [],
+            }
+        )
+        parsed, changes = parse_structured_output(raw, SCHEMA)
+        self.assertEqual(parsed["steps"], [{"description": "Search for perception of visual images."}])
+        self.assertEqual(changes, ["dropped_incomplete_item:steps[1]"])
+
+    def test_sole_incomplete_step_still_fails(self) -> None:
+        raw = json.dumps({"steps": [{"step_id": 1}], "tool_calls": []})
+        with self.assertRaises(OllamaResponseValidationError):
+            parse_structured_output(raw, SCHEMA)
+
     def test_non_json_still_fails(self) -> None:
         with self.assertRaises(OllamaResponseValidationError):
             parse_structured_output("Here is the plan: {", SCHEMA)

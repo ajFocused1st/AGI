@@ -452,8 +452,40 @@ def _coerce(
         items = _array_items(node, root)
         if items is None:
             return value
-        return [_coerce(item, items, root, f"{path}[{index}]", changes) for index, item in enumerate(value)]
+        coerced = [_coerce(item, items, root, f"{path}[{index}]", changes) for index, item in enumerate(value)]
+        return _drop_incomplete_items(coerced, items, _resolve(node, root), root, path, changes)
     return value
+
+
+def _drop_incomplete_items(
+    values: list[Any],
+    items: Mapping[str, Any],
+    array_node: Mapping[str, Any],
+    root: Mapping[str, Any],
+    path: str,
+    changes: list[str],
+) -> list[Any]:
+    """Drop object items missing a required property, only while the array still meets
+    its ``minItems``. Small models sometimes emit a stray fragment (for example a plan
+    step with no description); dropping it never invents content, and an array that would
+    fall below its minimum is left for the strict validator to reject."""
+
+    branch = _object_branch(items, root)
+    required = branch.get("required", []) if branch is not None else []
+    if not required:
+        return values
+    kept = [
+        value
+        for value in values
+        if not isinstance(value, dict) or all(key in value for key in required)
+    ]
+    minimum = array_node.get("minItems", 0) if isinstance(array_node, Mapping) else 0
+    if len(kept) == len(values) or len(kept) < max(1, minimum):
+        return values
+    for index, value in enumerate(values):
+        if isinstance(value, dict) and not all(key in value for key in required):
+            changes.append(f"dropped_incomplete_item:{path}[{index}]")
+    return kept
 
 
 def _schema_validator(schema: Mapping[str, Any]) -> Draft202012Validator:
