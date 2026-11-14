@@ -490,6 +490,23 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             line_end = index + 1
             last = following
             index += 1
+        # A quotation is followed by its attribution: short lines naming who said it.
+        if _ENDS_QUOTE.search(last):
+            added = 0
+            while index < len(lines) and added < 3:
+                following = clean(index)
+                if (
+                    not following
+                    or following.startswith("#")
+                    or len(following) > _ATTRIBUTION_LINE_CHARS
+                    or len(following) + 1 > budget
+                ):
+                    break
+                after.append(following)
+                budget -= len(following) + 1
+                line_end = index + 1
+                index += 1
+                added += 1
         # Then, for a question, the lines that answer it.
         if "?" in " ".join([*before, clean(unit.line_number - 1), *after]):
             added = 0
@@ -607,6 +624,8 @@ _SUMMARY_INTENT = frozenset("summarize summarise summary summaries overview".spl
 _COMPARE_INTENT = frozenset("compare comparing comparison contrast versus vs difference differences between".split())
 # Closing punctuation, optionally followed by a closing quote or bracket.
 _ENDS_SENTENCE = re.compile(r"[.!?:;][\"'”’)\]]*$")
+_ENDS_QUOTE = re.compile(r"[.!?,]?[\"”]$")
+_ATTRIBUTION_LINE_CHARS = 60
 _ANSWER_LINE = re.compile(r"^(answers?|solutions?|a)\s*[:.)]", re.IGNORECASE)
 _BM25_K1 = 1.2
 _BM25_B = 0.75

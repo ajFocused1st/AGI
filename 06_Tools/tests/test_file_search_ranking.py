@@ -83,6 +83,20 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Quartz does.", output.matches[0].snippet)
         self.assertNotIn("softest", output.matches[0].snippet)
 
+    async def test_quotation_carries_its_attribution(self) -> None:
+        (Path(self._temporary.name) / "quote.txt").write_text(
+            "“Measure twice,\n"
+            "cut once.”\n"
+            "Ada Fielding,\n"
+            "Welsh Carpenter (1801–1870)\n"
+            "This long body paragraph about lumber grading continues well past sixty characters in length.\n",
+            encoding="utf-8",
+        )
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="measure twice"))
+        snippet = output.matches[0].snippet
+        self.assertIn("Ada Fielding, Welsh Carpenter (1801–1870)", snippet)
+        self.assertNotIn("lumber", snippet)
+
     async def test_statement_lines_get_no_extra_context(self) -> None:
         output = await self.tool.run(ReadOnlyFileSearchInput(query="When did Harbor Depot open?"))
         self.assertEqual(output.matches[0].line_end, output.matches[0].line_start)
