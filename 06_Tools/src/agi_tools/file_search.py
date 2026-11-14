@@ -320,17 +320,17 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
         matches = []
         for unit in ranked:
             snippet = self._snippet(unit.text, unit.match_location, len(tool_input.query))
-            context, line_end = self._question_context(unit)
+            prefix, suffix, line_start, line_end = self._context(unit)
             matches.append(
                 FileSearchMatch(
                     source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
                     root_label=unit.document.root_label,
                     relative_path=unit.document.relative_path,
                     content_sha256=unit.document.content_sha256,
-                    line_start=unit.line_number,
+                    line_start=line_start,
                     line_end=line_end,
-                    line_number=unit.line_number,
-                    snippet=f"{snippet} {context}" if context else snippet,
+                    line_number=line_start,
+                    snippet=" ".join(part for part in (prefix, snippet, suffix) if part),
                     document_title=unit.heading_text,
                 )
             )
@@ -441,33 +441,74 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             return None
         return content, hashlib.sha256(raw).hexdigest()
 
-    def _question_context(self, unit: "_LineUnit") -> tuple[str, int]:
-        """Following lines of a matched question, so its answer travels with it.
+    def _context(self, unit: "_LineUnit") -> tuple[str, str, int, int]:
+        """Neighbouring lines a matched line needs to be read correctly.
 
-        Exercises and FAQs put the answer right after the question line; a single
-        line would carry only the question. Stops at the next question or heading.
+        - Wrapped sentences (common in text extracted from PDFs): a line starting in
+          lower case gets the lines before it, and a line without closing punctuation
+          gets the lines after it, up to 3 each way.
+        - Questions (exercises, FAQs): the answer follows the question line, so a
+          question carries up to ``question_context_lines`` more lines, stopping at the
+          next question or heading. Answer lines ("Answer: ... ?") do not stop it.
+        All added text shares the ``question_context_chars`` budget.
+        Returns (prefix, suffix, line_start, line_end).
         """
 
-        if "?" not in unit.text or self.config.question_context_lines == 0:
-            return "", unit.line_number
-        parts: list[str] = []
-        used = 0
-        line_end = unit.line_number
+        if self.config.question_context_lines == 0 or unit.text.lstrip().startswith("#"):
+            return "", "", unit.line_number, unit.line_number
         lines = unit.document.lines
+        budget = self.config.question_context_chars
+
+        def clean(index: int) -> str:
+            return " ".join(lines[index].strip().split())
+
+        before: list[str] = []
+        line_start = unit.line_number
+        index = unit.line_number - 2  # 0-based index of the previous line
+        first = clean(unit.line_number - 1)
+        while first[:1].islower() and index >= 0 and len(before) < 3:
+            previous = clean(index)
+            if not previous or previous.startswith("#") or len(previous) + 1 > budget:
+                break
+            before.insert(0, previous)
+            budget -= len(previous) + 1
+            line_start = index + 1
+            first = previous
+            index -= 1
+
+        after: list[str] = []
+        line_end = unit.line_number
         index = unit.line_number  # 0-based index of the next line
-        while index < len(lines) and len(parts) < self.config.question_context_lines:
-            stripped = " ".join(lines[index].strip().split())
+        last = clean(unit.line_number - 1)
+        # Complete a wrapped sentence first.
+        while not _ENDS_SENTENCE.search(last) and index < len(lines) and len(after) < 3:
+            following = clean(index)
+            if not following or following.startswith("#") or len(following) + 1 > budget:
+                break
+            after.append(following)
+            budget -= len(following) + 1
+            line_end = index + 1
+            last = following
             index += 1
-            if not stripped:
-                continue
-            if "?" in stripped or stripped.startswith("#"):
-                break
-            if used + len(stripped) + 1 > self.config.question_context_chars:
-                break
-            parts.append(stripped)
-            used += len(stripped) + 1
-            line_end = index
-        return " ".join(parts), line_end
+        # Then, for a question, the lines that answer it.
+        if "?" in " ".join([*before, clean(unit.line_number - 1), *after]):
+            added = 0
+            while index < len(lines) and added < self.config.question_context_lines:
+                following = clean(index)
+                index += 1
+                if not following:
+                    continue
+                if following.startswith("#") or (
+                    "?" in following and not _ANSWER_LINE.match(following)
+                ):
+                    break
+                if len(following) + 1 > budget:
+                    break
+                after.append(following)
+                budget -= len(following) + 1
+                line_end = index
+                added += 1
+        return " ".join(before), " ".join(after), line_start, line_end
 
     def _snippet(self, line: str, match_start: int, query_length: int) -> str:
         clean_line = " ".join(line.strip().split())
@@ -564,6 +605,9 @@ _GENERIC_TERMS = frozenset(
 _SUMMARY_INTENT = frozenset("summarize summarise summary summaries overview".split())
 # Comparisons need breadth: each side's facts rarely repeat every query term.
 _COMPARE_INTENT = frozenset("compare comparing comparison contrast versus vs difference differences between".split())
+# Closing punctuation, optionally followed by a closing quote or bracket.
+_ENDS_SENTENCE = re.compile(r"[.!?:;][\"'”’)\]]*$")
+_ANSWER_LINE = re.compile(r"^(answers?|solutions?|a)\s*[:.)]", re.IGNORECASE)
 _BM25_K1 = 1.2
 _BM25_B = 0.75
 _CONTEXT_WEIGHT = 0.5

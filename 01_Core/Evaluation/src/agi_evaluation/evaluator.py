@@ -95,6 +95,7 @@ class RuleBasedEvaluator:
             citations=citations,
         )
         document_supported, document_detail = self._document_claim_support(
+            goal=request.goal,
             answer=answer,
             evidence=evidence,
             citations=citations,
@@ -321,6 +322,7 @@ class RuleBasedEvaluator:
     @staticmethod
     def _document_claim_support(
         *,
+        goal: str = "",
         answer: str,
         evidence: Sequence[EvidenceReference],
         citations: Sequence[Citation],
@@ -358,7 +360,12 @@ class RuleBasedEvaluator:
         titles = " ".join(
             str(item.metadata.get("document_title", "")) for item in document_items
         )
-        cited_words = set(re.findall(r"[a-z0-9][a-z0-9_-]*", f"{cited_text} {titles}".casefold()))
+        cited_sequence = re.findall(r"[a-z0-9][a-z0-9_-]*", f"{cited_text} {titles}".casefold())
+        # Text extracted from PDFs splits words at line ends ("Edi" + "tion"); a word
+        # formed by two adjacent fragments counts as cited.
+        cited_words = set(cited_sequence) | {
+            first + second for first, second in zip(cited_sequence, cited_sequence[1:])
+        }
         missing_entities = sorted(_answer_entity_terms(answer_for_support) - cited_words)
         # Dates and multi-digit numbers are high-risk facts: each must appear in cited
         # evidence (documents or calculator results), however many other words overlap.
@@ -370,10 +377,24 @@ class RuleBasedEvaluator:
             part for date in _ISO_DATE.findall(all_cited_text) for part in date.split("-")
         }
         unsupported_dates += sorted(_numbers_for_support(answer_for_support) - cited_numbers)
-        if len(supported) < minimum_overlap or missing_entities or unsupported_dates:
+        # Words that only restate the question prove nothing: what the answer adds (the
+        # actual answer) must be at least half supported by the cited text.
+        novel = answer_tokens - _concrete_tokens(goal)
+        novel_supported = novel & cited_tokens
+        novel_unsupported = bool(novel) and len(novel_supported) < (len(novel) + 1) // 2
+        if (
+            len(supported) < minimum_overlap
+            or missing_entities
+            or unsupported_dates
+            or novel_unsupported
+        ):
             details = [
                 f"supported concrete terms: {len(supported)}/{len(answer_tokens)}",
             ]
+            if novel_unsupported:
+                details.append(
+                    f"terms beyond the question supported: {len(novel_supported)}/{len(novel)}"
+                )
             if missing_entities:
                 details.append("missing cited entities: " + ", ".join(missing_entities))
             if unsupported_dates:

@@ -90,7 +90,9 @@ class CoercionTests(unittest.TestCase):
             parse_structured_output(raw, SCHEMA)
 
     def test_missing_required_field_still_fails(self) -> None:
-        raw = json.dumps({"steps": [{"description": "S"}], "extra": 1})
+        # A missing list of steps cannot be filled: the plan needs at least one.
+        # (A missing tool_calls list now becomes [], see below.)
+        raw = json.dumps({"tool_calls": [], "extra": 1})
         with self.assertRaises(OllamaResponseValidationError):
             parse_structured_output(raw, SCHEMA)
 
@@ -110,6 +112,13 @@ class CoercionTests(unittest.TestCase):
         raw = json.dumps({"steps": [{"step_id": 1}], "tool_calls": []})
         with self.assertRaises(OllamaResponseValidationError):
             parse_structured_output(raw, SCHEMA)
+
+    def test_missing_tool_call_list_becomes_empty(self) -> None:
+        # Live, real-documents run: the plan omitted "tool_calls" entirely.
+        raw = json.dumps({"steps": [{"description": "Search for Section 6.7."}]})
+        parsed, changes = parse_structured_output(raw, SCHEMA)
+        self.assertEqual(parsed["tool_calls"], [])
+        self.assertEqual(changes, ["missing_list_to_empty:tool_calls"])
 
     def test_non_json_still_fails(self) -> None:
         with self.assertRaises(OllamaResponseValidationError):

@@ -57,6 +57,32 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((match.line_start, match.line_end), (1, 4))  # stops before next question
 
+    async def test_wrapped_sentence_is_completed_both_ways(self) -> None:
+        # PDF-extracted text: the answer ("is geology") sits on the next line.
+        (Path(self._temporary.name) / "wrapped.txt").write_text(
+            "Intro text ends here.\n"
+            "The branch of science that studies rocks and minerals\n"
+            "is geology. Another branch studies oceans.\n",
+            encoding="utf-8",
+        )
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="branch science studies rocks minerals"))
+        self.assertEqual(
+            output.matches[0].snippet,
+            "The branch of science that studies rocks and minerals is geology. Another branch studies oceans.",
+        )
+        self.assertEqual((output.matches[0].line_start, output.matches[0].line_end), (2, 3))
+
+    async def test_answer_line_containing_a_question_mark_is_kept(self) -> None:
+        (Path(self._temporary.name) / "practice.txt").write_text(
+            "What test separates a quartz crystal from glass?\n"
+            "Answer: Ask the question, “Does it scratch steel?” Quartz does.\n"
+            "Which mineral is softest?\n",
+            encoding="utf-8",
+        )
+        output = await self.tool.run(ReadOnlyFileSearchInput(query="test separates quartz crystal glass"))
+        self.assertIn("Quartz does.", output.matches[0].snippet)
+        self.assertNotIn("softest", output.matches[0].snippet)
+
     async def test_statement_lines_get_no_extra_context(self) -> None:
         output = await self.tool.run(ReadOnlyFileSearchInput(query="When did Harbor Depot open?"))
         self.assertEqual(output.matches[0].line_end, output.matches[0].line_start)

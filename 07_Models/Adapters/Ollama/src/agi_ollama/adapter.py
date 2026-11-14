@@ -447,6 +447,15 @@ def _coerce(
                 result[key] = item
                 continue
             result[key] = _coerce(item, properties[key], root, f"{path + '.' if path else ''}{key}", changes)
+        # A required list the model left out entirely means "none": an empty list adds no
+        # content, and the host still enforces any capability the task requires.
+        for key in branch.get("required", []):
+            if key in result or key not in properties:
+                continue
+            target = _resolve(properties[key], root)
+            if target.get("type") == "array" and not target.get("minItems"):
+                result[key] = []
+                changes.append(f"missing_list_to_empty:{path + '.' if path else ''}{key}")
         return result
     if isinstance(value, list):
         items = _array_items(node, root)

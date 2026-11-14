@@ -32,11 +32,15 @@ async def _run(arguments: argparse.Namespace) -> int:
         settings = settings.model_copy(update={"reasoning_tier": arguments.tier})
     engine = build_engine(settings)
     if arguments.goal:
-        return await _ask(engine, arguments.goal, arguments.json)
+        try:
+            return await _ask(engine, arguments.goal, arguments.json)
+        except Exception as error:
+            print(f"error: {type(error).__name__}: {error}")
+            return 1
     print("Ask a question (press Enter on an empty line, or type exit, to quit).")
     while True:
         try:
-            goal = input("\n> ").replace("﻿", "").strip()
+            goal = _read_question().replace("﻿", "").strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -47,6 +51,27 @@ async def _run(arguments: argparse.Namespace) -> int:
             await _ask(engine, goal, arguments.json)
         except Exception as error:  # keep the session alive after one failed question
             print(f"error: {type(error).__name__}: {error}")
+
+
+def _read_question() -> str:
+    """One question, even when a pasted question spans several lines.
+
+    A paste arrives all at once, so on Windows any lines still waiting in the console
+    buffer right after Enter belong to the same question and are joined to it.
+    """
+
+    text = input("\n> ")
+    try:
+        import msvcrt
+    except ImportError:
+        return text
+    import time
+
+    time.sleep(0.05)
+    while msvcrt.kbhit():
+        text += " " + input()
+        time.sleep(0.05)
+    return text
 
 
 async def _ask(engine: object, goal: str, as_json: bool) -> int:

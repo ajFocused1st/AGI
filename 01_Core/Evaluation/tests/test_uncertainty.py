@@ -63,6 +63,43 @@ class DateEquivalenceTests(unittest.TestCase):
         self.assertFalse(self._supported("Project Atlas launched on March 3, 2024.", excerpt))
 
 
+class AnswerBeyondQuestionTests(unittest.TestCase):
+    """Real textbook run: the answer restated the question and invented its ending."""
+
+    GOAL = "What branch of chemistry studies substances derived from plants and animals?"
+    EXCERPT = "The branch of chemistry that studies substances derived from plants and animals"
+
+    def _supported(self, answer: str, excerpt: str) -> bool:
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        evidence = EvidenceReference(
+            evidence_id=uuid4(), source_id="d:book.txt", source_path="book.txt", excerpt=excerpt
+        )
+        supported, _ = RuleBasedEvaluator._document_claim_support(
+            goal=self.GOAL,
+            answer=answer,
+            evidence=[evidence],
+            citations=[Citation(evidence_id=evidence.evidence_id, label="book.txt")],
+        )
+        return supported
+
+    def test_invented_ending_is_unsupported(self) -> None:
+        answer = "The branch of chemistry that studies substances derived from plants and animals is natural products."
+        self.assertFalse(self._supported(answer, self.EXCERPT))
+
+    def test_word_split_across_lines_counts_as_cited(self) -> None:
+        excerpt = "To address this issue, the Eighth Edi tion of this textbook added Section 6.7."
+        answer = "The Eighth Edition of this textbook added Section 6.7 to address this issue."
+        self.assertTrue(self._supported(answer, excerpt))
+
+    def test_answer_present_in_the_cited_text_is_supported(self) -> None:
+        answer = "The branch of chemistry that studies substances derived from plants and animals is biochemistry."
+        self.assertTrue(self._supported(answer, self.EXCERPT + " is biochemistry."))
+
+
 class GradingRegressionTests(DateEquivalenceTests):
     """Step 9b: correct checkpoint-B answers must pass; wrong answers must still fail."""
 
