@@ -120,6 +120,52 @@ class CoercionTests(unittest.TestCase):
         self.assertEqual(parsed["tool_calls"], [])
         self.assertEqual(changes, ["missing_list_to_empty:tool_calls"])
 
+    def test_steps_run_together_are_separated(self) -> None:
+        # Live, real-documents run: the model left out the "},{" between steps 2 and 3,
+        # so one step object carried every key twice.
+        raw = (
+            '{"steps":[{"step_id":1,"description":"Search for the audited figure."},'
+            '{"step_id":2,"description":"Find the earlier number.",'
+            '"step_id":3,"description":"State both numbers."}],"tool_calls":[]}'
+        )
+        parsed, changes = parse_structured_output(raw, SCHEMA)
+        self.assertEqual(
+            parsed["steps"],
+            [
+                {"step_id": 1, "description": "Search for the audited figure."},
+                {"step_id": 2, "description": "Find the earlier number."},
+                {"step_id": 3, "description": "State both numbers."},
+            ],
+        )
+        self.assertEqual(changes, ["separated_merged_items:steps[1]"])
+
+    def test_tool_calls_run_together_are_separated(self) -> None:
+        raw = (
+            '{"steps":[{"description":"Search."}],"tool_calls":['
+            '{"tool_name":"search","arguments":{"query":"a"},'
+            '"tool_name":"search","arguments":{"query":"b"}}]}'
+        )
+        parsed, changes = parse_structured_output(raw, SCHEMA)
+        self.assertEqual(
+            [call["arguments"] for call in parsed["tool_calls"]], [{"query": "a"}, {"query": "b"}]
+        )
+        self.assertEqual(changes, ["separated_merged_items:tool_calls[0]"])
+
+    def test_repeated_key_outside_a_list_still_fails(self) -> None:
+        # Nothing says which value was meant, so neither is chosen.
+        raw = '{"goal":"a","goal":"b","steps":[{"description":"S"}],"tool_calls":[]}'
+        with self.assertRaises(OllamaResponseValidationError) as caught:
+            parse_structured_output(raw, SCHEMA)
+        self.assertIn("Duplicate JSON object key: goal", str(caught.exception))
+
+    def test_repeated_key_in_tool_arguments_still_fails(self) -> None:
+        raw = (
+            '{"steps":[{"description":"S"}],"tool_calls":['
+            '{"tool_name":"search","arguments":{"query":"a","query":"b"}}]}'
+        )
+        with self.assertRaises(OllamaResponseValidationError):
+            parse_structured_output(raw, SCHEMA)
+
     def test_non_json_still_fails(self) -> None:
         with self.assertRaises(OllamaResponseValidationError):
             parse_structured_output("Here is the plan: {", SCHEMA)

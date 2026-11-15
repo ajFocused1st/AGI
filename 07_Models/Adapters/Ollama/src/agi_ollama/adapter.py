@@ -337,8 +337,10 @@ def validate_structured_output(content: str, schema: Mapping[str, Any]) -> dict[
     try:
         parsed = _strict_json_loads(content)
     except (json.JSONDecodeError, RecursionError, ValueError) as exc:
+        # The reason is repeated to the model on the corrective retry, so name the fault
+        # (e.g. a repeated key inside one object) rather than only "not strict JSON".
         raise OllamaResponseValidationError(
-            "Model output was not strict JSON; "
+            f"Model output was not strict JSON ({str(exc)[:160]}); "
             f"preview={_content_preview(content)!r}"
         ) from exc
     if not isinstance(parsed, dict):
@@ -362,19 +364,23 @@ def parse_structured_output(
 
     Local grammar-constrained decoding does not enforce ``additionalProperties: false``
     or ``minLength``, so small models emit echoed prompt keys or ``""`` for optional
-    fields. Coercion only (a) drops keys where the schema forbids extra properties and
-    (b) maps ``""`` to ``null`` where the schema allows ``null``. It never invents values;
-    everything else must still pass the unchanged strict validator. Changes are returned
-    for telemetry.
+    fields. Coercion only (a) drops keys where the schema forbids extra properties,
+    (b) maps ``""`` to ``null`` where the schema allows ``null``, and (c) separates list
+    items the model ran together (see ``_loads_separating_merged_items``). It never
+    invents values; everything else must still pass the unchanged strict validator.
+    Changes are returned for telemetry.
     """
 
+    changes: list[str] = []
     try:
         parsed = _strict_json_loads(content)
     except (json.JSONDecodeError, RecursionError, ValueError):
-        return validate_structured_output(content, schema), []
+        try:
+            parsed = _loads_separating_merged_items(content, changes)
+        except (json.JSONDecodeError, RecursionError, ValueError):
+            return validate_structured_output(content, schema), []
     if not isinstance(parsed, dict):
         return validate_structured_output(content, schema), []
-    changes: list[str] = []
     coerced = _coerce(parsed, schema, schema, "", changes)
     if not changes:
         return validate_structured_output(content, schema), []
@@ -606,6 +612,46 @@ def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
             raise ValueError(f"Duplicate JSON object key: {key}")
         result[key] = value
     return result
+
+
+class _Pairs(list):
+    """The key/value pairs of one JSON object, in the order written."""
+
+
+def _loads_separating_merged_items(content: str, changes: list[str]) -> Any:
+    """Strict parse, except that a list item repeating a key is read as several items.
+
+    Small models sometimes leave out the ``},{`` between two list items, writing
+    ``[{"id": 1, "text": "a", "id": 2, "text": "b"}]``. Inside a list the repeat marks
+    where the next item starts, so the item is divided there and nothing is lost or
+    invented. A repeated key anywhere else is still rejected.
+    """
+
+    raw = json.loads(content, parse_constant=_reject_json_constant, object_pairs_hook=_Pairs)
+    return _rebuild(raw, "", changes)
+
+
+def _rebuild(value: Any, path: str, changes: list[str]) -> Any:
+    if isinstance(value, _Pairs):
+        return _reject_duplicate_keys(
+            [(key, _rebuild(item, f"{path + '.' if path else ''}{key}", changes)) for key, item in value]
+        )
+    if not isinstance(value, list):
+        return value
+    rebuilt: list[Any] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, _Pairs):
+            rebuilt.append(_rebuild(item, f"{path}[{index}]", changes))
+            continue
+        groups: list[_Pairs] = [_Pairs()]
+        for key, entry in item:
+            if any(key == seen for seen, _ in groups[-1]):
+                groups.append(_Pairs())
+            groups[-1].append((key, entry))
+        if len(groups) > 1:
+            changes.append(f"separated_merged_items:{path}[{index}]")
+        rebuilt.extend(_rebuild(group, f"{path}[{index}]", changes) for group in groups)
+    return rebuilt
 
 
 def _reject_external_references(value: Any) -> None:
