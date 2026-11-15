@@ -285,6 +285,34 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
             [result.tool_name for result in record.tool_results if result.success], [CALCULATOR]
         )
 
+    # --- a calculation over document numbers -----------------------------------------
+
+    async def test_empty_plan_for_a_document_calculation_searches_then_calculates(self) -> None:
+        # Live, real-documents run: the model planned no tools for a question that needed a
+        # search and the calculator, so dispatch was blocked and nothing was searched.
+        goal = "How many litres per minute do Kestrel and Osprey move combined?"
+        record, _ = await self.run_case(
+            [
+                plan(),
+                plan(),
+                reply({"tool_calls": [{"tool_name": CALCULATOR, "arguments": {"expression": "40 + 55"}}]}),
+                reply({"answer": "Together they move 95 litres per minute."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH, CALCULATOR]),
+            goal,
+        )
+        self.assertEqual([request.tool_name for request in record.tool_requests], [SEARCH, CALCULATOR])
+        self.assertEqual(self.queries(record), [goal])
+        self.assertTrue(all(result.success for result in record.tool_results))
+        self.assertNotIn("tool_dispatch_blocked", [error.code for error in record.errors])
+        self.assertEqual(
+            record.metadata["host_actions"],
+            [
+                {"action": "host_required_retrieval", "tool_name": SEARCH},
+                {"action": "deferred_required_capability", "capabilities": [CALCULATOR]},
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

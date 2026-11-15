@@ -71,6 +71,9 @@ _FOLLOW_UP_ROUNDS = {
     ReasoningTier.DEEP: 2,
     ReasoningTier.MAX: 3,
 }
+# Capabilities whose inputs come from retrieved evidence, so they can wait for a
+# follow-up round instead of having to appear in the first plan.
+_EVIDENCE_DEPENDENT_CAPABILITIES = frozenset({"calculator"})
 
 
 class RuntimeExecutionError(RuntimeError):
@@ -291,6 +294,11 @@ class AgentRuntime:
             state.host_actions.append(
                 {"action": "host_required_retrieval", "tool_name": host_retrieval.tool_name}
             )
+            waiting = [item for item in result.missing_capabilities if item != HOST_RETRIEVAL_TOOL]
+            if waiting:
+                state.host_actions.append(
+                    {"action": "deferred_required_capability", "capabilities": waiting}
+                )
         elif not result.valid:
             state.errors.append(
                 ErrorDetail(
@@ -319,11 +327,19 @@ class AgentRuntime:
     def _host_required_retrieval(
         self, state: _RunState, result: PlanRequirementResult
     ) -> ToolCallDraft | None:
-        """A goal-derived search when the only plan defect is a missing required search."""
+        """A goal-derived search when the plan's only defect is a missing required search.
 
+        A missing capability that works on evidence (the calculator) does not prevent
+        this when a follow-up round can still supply it after the search.
+        """
+
+        missing = set(result.missing_capabilities)
+        waiting = missing - {HOST_RETRIEVAL_TOOL}
         if (
             result.valid
-            or result.missing_capabilities != [HOST_RETRIEVAL_TOOL]
+            or HOST_RETRIEVAL_TOOL not in missing
+            or not waiting <= _EVIDENCE_DEPENDENT_CAPABILITIES
+            or (waiting and not self._can_follow_up(state))
             or result.forbidden_capabilities_proposed
             or result.unknown_capabilities_proposed
             or not self._routing_policy.allow_tools
