@@ -13,6 +13,8 @@ def build_evidence_bundle(
 ) -> EvidenceBundle:
     request_by_id = {request.request_id: request for request in requests}
     items: list[EvidenceItem] = []
+    # Two searches often return the same passage; the model should read it once.
+    seen_passages: set[tuple[str, int, int, str]] = set()
     for result in results:
         if not result.success:
             continue
@@ -42,6 +44,12 @@ def build_evidence_bundle(
             excerpt = _sanitize_excerpt(str(match.get("snippet", "")))
             if not excerpt:
                 continue
+            line_start = int(match.get("line_start", 1))
+            line_end = int(match.get("line_end", 1))
+            passage = (str(match["source_id"]), line_start, line_end, excerpt)
+            if passage in seen_passages:
+                continue
+            seen_passages.add(passage)
             title = match.get("document_title")
             items.append(
                 EvidenceItem(
@@ -52,8 +60,8 @@ def build_evidence_bundle(
                     retrieval_tool=result.tool_name,
                     metadata={
                         "relative_path": str(match.get("relative_path", "")),
-                        "line_start": int(match.get("line_start", 1)),
-                        "line_end": int(match.get("line_end", 1)),
+                        "line_start": line_start,
+                        "line_end": line_end,
                         **(
                             {"document_title": _sanitize_excerpt(title)[:200]}
                             if isinstance(title, str) and title.strip()

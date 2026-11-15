@@ -19,6 +19,9 @@ class OllamaSettings(BaseModel):
     max_retries: int = Field(default=1, ge=0, le=3)
     temperature: float = Field(default=0, ge=0, le=2)
     max_tokens: int = Field(default=2048, ge=1, le=8192)
+    # Sent as Ollama's num_ctx. Without it Ollama uses its own default (often 4,096 tokens)
+    # and silently cuts off the start of any longer prompt, evidence included.
+    context_tokens: int | None = Field(default=8192, ge=512, le=131_072)
 
 
 class RunPodSettings(BaseModel):

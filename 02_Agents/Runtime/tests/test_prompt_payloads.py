@@ -43,7 +43,8 @@ class PromptPayloadTests(unittest.TestCase):
         registry = ToolRegistry()
         registry.register(Calculator())
         (definition,) = compact_tool_definitions(registry.tools.values())
-        self.assertEqual(set(definition), {"name", "description", "arguments", "required"})
+        # "tool_name" is the key the model has to write back in a tool call.
+        self.assertEqual(set(definition), {"tool_name", "description", "arguments", "required"})
         self.assertIn("expression", definition["arguments"])
 
     def test_tool_outcomes_report_failures_and_empty_searches(self) -> None:

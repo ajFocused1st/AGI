@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID
 
 from agi_contracts.models import Description, Identifier, JsonObject, LongText, ShortText
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class PlanStepDraft(BaseModel):
@@ -20,13 +20,49 @@ class PlanStepDraft(BaseModel):
     success_criteria: ShortText | None = None
 
 
+_TOOL_NAME_ALIASES = ("name", "tool")
+_NO_TOOL_NAME = frozenset({"", "null", "none"})
+
+
 class ToolCallDraft(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    """A proposed tool call, read tolerantly.
+
+    Small models misspell the envelope, not the intent: they write ``name`` or ``tool``
+    for ``tool_name``, the text "null" for no tool, and arguments beside ``arguments``
+    instead of inside it. Rejecting or silently dropping those keys loses the call, so
+    they are accepted here: aliases are mapped, and unknown keys are kept (``extra``)
+    for the host to match against the named tool's argument schema. Nothing is invented,
+    and every recovered call still passes the same permission and argument validation.
+    """
+
+    model_config = ConfigDict(extra="allow", str_strip_whitespace=True)
 
     tool_name: Identifier | None = None
     arguments: JsonObject = Field(default_factory=dict)
     purpose: ShortText | None = None
     related_step_id: str | int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_common_spellings(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        for alias in _TOOL_NAME_ALIASES:
+            spelled = data.pop(alias, None)
+            if isinstance(spelled, str) and not isinstance(data.get("tool_name"), str):
+                data["tool_name"] = spelled
+        name = data.get("tool_name")
+        if isinstance(name, str) and name.strip().casefold() in _NO_TOOL_NAME:
+            data["tool_name"] = None
+        if data.get("arguments") is None:
+            data["arguments"] = {}
+        return data
+
+    def is_empty(self) -> bool:
+        """True when the entry proposes nothing (a model's way of writing "no call")."""
+
+        return not self.tool_name and not self.arguments and not self.model_extra
 
 
 class PlanDraft(BaseModel):

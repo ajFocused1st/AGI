@@ -78,9 +78,11 @@ DEFAULT_ROUTING_POLICIES = MappingProxyType(
             budget=BudgetPolicy(
                 max_model_calls=5,
                 max_tool_calls=8,
-                max_input_tokens=8192,
+                # Totals are per run, summed over its model calls. Passage evidence makes each
+                # prompt roughly 2,000-3,500 tokens, so up to five calls need this much room.
+                max_input_tokens=16_384,
                 max_output_tokens=2048,
-                max_total_tokens=12_288,
+                max_total_tokens=20_480,
                 max_wallclock_seconds=120.0,
             ),
             allow_tools=True,

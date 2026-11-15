@@ -28,7 +28,8 @@ def compact_tool_definitions(definitions: Iterable[ToolDefinition]) -> list[dict
         }
         compact.append(
             {
-                "name": definition.name,
+                # The key the model must write back in a tool call, so it can copy it.
+                "tool_name": definition.name,
                 "description": definition.description,
                 "arguments": arguments,
                 "required": list(schema.get("required", [])),

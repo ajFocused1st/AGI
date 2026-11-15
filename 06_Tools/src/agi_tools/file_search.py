@@ -1,8 +1,9 @@
-"""Read-only literal text search within administrator-configured roots."""
+"""Read-only passage search within administrator-configured roots."""
 
 from __future__ import annotations
 
 import asyncio
+import bisect
 import hashlib
 import math
 import os
@@ -41,24 +42,10 @@ DEFAULT_SENSITIVE_NAMES = frozenset(
 DEFAULT_SENSITIVE_SUFFIXES = frozenset({".cer", ".crt", ".der", ".key", ".p12", ".pem", ".pfx"})
 WINDOWS_HIDDEN_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_HIDDEN", 0x2)
 QUERY_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "date",
-        "fact",
-        "facts",
-        "find",
-        "for",
-        "in",
-        "is",
-        "of",
-        "on",
-        "the",
-        "what",
-        "when",
-        "who",
-    }
+    "a an and date fact facts find for in is of on the what when who "
+    # Function words: they occur everywhere, so matching them says nothing about relevance.
+    "am as at be been being but by can could do had has have he her his if it may me my no "
+    "nor not or our she should so to too us very we would you your".split()
 )
 WINDOWS_REPARSE_ATTRIBUTE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 
@@ -93,10 +80,10 @@ class ReadOnlyFileSearchConfig(BaseModel):
     max_matches: int = Field(default=50, ge=1, le=100)
     max_files_scanned: int = Field(default=1_000, ge=1, le=10_000)
     max_directories_scanned: int = Field(default=1_000, ge=1, le=10_000)
-    max_snippet_chars: int = Field(default=400, ge=80, le=1_000)
-    # A matched question line carries the lines after it (its options and solution).
-    question_context_lines: int = Field(default=4, ge=0, le=10)
-    question_context_chars: int = Field(default=400, ge=0, le=1_000)
+    # Prose is returned as sentence-aligned passages of about this many characters.
+    passage_chars: int = Field(default=800, ge=200, le=2_000)
+    # Total snippet characters one search may return (the best match is always returned).
+    max_result_chars: int = Field(default=4_000, ge=200, le=20_000)
     case_sensitive: bool = False
     sensitive_names: frozenset[str] = DEFAULT_SENSITIVE_NAMES
     sensitive_suffixes: frozenset[str] = DEFAULT_SENSITIVE_SUFFIXES
@@ -145,7 +132,7 @@ class ReadOnlyFileSearchInput(BaseModel):
 
 
 class FileSearchMatch(BaseModel):
-    """One line containing the literal query."""
+    """One matching unit: a fact line, or a passage of prose spanning several lines."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -201,7 +188,8 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
 
     name = "read_only_file_search"
     description = (
-        "Find literal text in approved local documents. Search roots are fixed by the host."
+        "Find the passages of approved local documents most relevant to a plain-language "
+        "query. Search roots are fixed by the host."
     )
     risk_level = RiskLevel.LOW
     permissions_required = ("filesystem.search.readonly",)
@@ -314,26 +302,28 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             if truncated:
                 break
 
-        ranked, more_available = _rank_lines(
-            documents, tool_input.query, limit=effective_limit, case_sensitive=self.config.case_sensitive
+        ranked, more_available = _rank_units(
+            documents,
+            tool_input.query,
+            limit=effective_limit,
+            case_sensitive=self.config.case_sensitive,
+            passage_chars=self.config.passage_chars,
+            max_result_chars=self.config.max_result_chars,
         )
-        matches = []
-        for unit in ranked:
-            snippet = self._snippet(unit.text, unit.match_location, len(tool_input.query))
-            prefix, suffix, line_start, line_end = self._context(unit)
-            matches.append(
-                FileSearchMatch(
-                    source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
-                    root_label=unit.document.root_label,
-                    relative_path=unit.document.relative_path,
-                    content_sha256=unit.document.content_sha256,
-                    line_start=line_start,
-                    line_end=line_end,
-                    line_number=line_start,
-                    snippet=" ".join(part for part in (prefix, snippet, suffix) if part),
-                    document_title=unit.heading_text,
-                )
+        matches = [
+            FileSearchMatch(
+                source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
+                root_label=unit.document.root_label,
+                relative_path=unit.document.relative_path,
+                content_sha256=unit.document.content_sha256,
+                line_start=unit.line_start,
+                line_end=unit.line_end,
+                line_number=unit.line_start,
+                snippet=unit.text,
+                document_title=unit.heading_text,
             )
+            for unit in ranked
+        ]
         return FileSearchOutput(
             query=tool_input.query,
             matches=matches,
@@ -441,112 +431,6 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             return None
         return content, hashlib.sha256(raw).hexdigest()
 
-    def _context(self, unit: "_LineUnit") -> tuple[str, str, int, int]:
-        """Neighbouring lines a matched line needs to be read correctly.
-
-        - Wrapped sentences (common in text extracted from PDFs): a line starting in
-          lower case gets the lines before it, and a line without closing punctuation
-          gets the lines after it, up to 3 each way.
-        - Questions (exercises, FAQs): the answer follows the question line, so a
-          question carries up to ``question_context_lines`` more lines, stopping at the
-          next question or heading. Answer lines ("Answer: ... ?") do not stop it.
-        All added text shares the ``question_context_chars`` budget.
-        Returns (prefix, suffix, line_start, line_end).
-        """
-
-        if self.config.question_context_lines == 0 or unit.text.lstrip().startswith("#"):
-            return "", "", unit.line_number, unit.line_number
-        lines = unit.document.lines
-        budget = self.config.question_context_chars
-
-        def clean(index: int) -> str:
-            return " ".join(lines[index].strip().split())
-
-        before: list[str] = []
-        line_start = unit.line_number
-        index = unit.line_number - 2  # 0-based index of the previous line
-        first = clean(unit.line_number - 1)
-        while first[:1].islower() and index >= 0 and len(before) < 3:
-            previous = clean(index)
-            if not previous or previous.startswith("#") or len(previous) + 1 > budget:
-                break
-            before.insert(0, previous)
-            budget -= len(previous) + 1
-            line_start = index + 1
-            first = previous
-            index -= 1
-
-        after: list[str] = []
-        line_end = unit.line_number
-        index = unit.line_number  # 0-based index of the next line
-        last = clean(unit.line_number - 1)
-        # Complete a wrapped sentence first.
-        while not _ENDS_SENTENCE.search(last) and index < len(lines) and len(after) < 3:
-            following = clean(index)
-            if not following or following.startswith("#") or len(following) + 1 > budget:
-                break
-            after.append(following)
-            budget -= len(following) + 1
-            line_end = index + 1
-            last = following
-            index += 1
-        # A quotation is followed by its attribution: short lines naming who said it.
-        if _ENDS_QUOTE.search(last):
-            added = 0
-            while index < len(lines) and added < 3:
-                following = clean(index)
-                if (
-                    not following
-                    or following.startswith("#")
-                    or len(following) > _ATTRIBUTION_LINE_CHARS
-                    or len(following) + 1 > budget
-                ):
-                    break
-                after.append(following)
-                budget -= len(following) + 1
-                line_end = index + 1
-                index += 1
-                added += 1
-        # Then, for a question, the lines that answer it.
-        if "?" in " ".join([*before, clean(unit.line_number - 1), *after]):
-            added = 0
-            while index < len(lines) and added < self.config.question_context_lines:
-                following = clean(index)
-                index += 1
-                if not following:
-                    continue
-                if following.startswith("#") or (
-                    "?" in following and not _ANSWER_LINE.match(following)
-                ):
-                    break
-                if len(following) + 1 > budget:
-                    break
-                after.append(following)
-                budget -= len(following) + 1
-                line_end = index
-                added += 1
-        return " ".join(before), " ".join(after), line_start, line_end
-
-    def _snippet(self, line: str, match_start: int, query_length: int) -> str:
-        clean_line = " ".join(line.strip().split())
-        if len(clean_line) <= self.config.max_snippet_chars:
-            return clean_line
-
-        # The whitespace normalization above can shift the original match. Find it
-        # again when possible and otherwise use the original offset conservatively.
-        query_length = min(query_length, self.config.max_snippet_chars)
-        start = min(match_start, max(0, len(clean_line) - 1))
-        left_context = max(20, (self.config.max_snippet_chars - query_length) // 2)
-        window_start = max(0, start - left_context)
-        window_end = min(len(clean_line), window_start + self.config.max_snippet_chars)
-        window_start = max(0, window_end - self.config.max_snippet_chars)
-        snippet = clean_line[window_start:window_end]
-        if window_start:
-            snippet = "..." + snippet[3:]
-        if window_end < len(clean_line):
-            snippet = snippet[:-3] + "..."
-        return snippet
-
     def _entry_is_rejected(self, name: str, entry_stat: os.stat_result) -> bool:
         folded = name.casefold()
         if name.startswith("."):
@@ -593,17 +477,20 @@ class _ScannedDocument:
 
 
 @dataclass(slots=True)
-class _LineUnit:
+class _Unit:
+    """A retrievable unit: one markdown heading line, or one passage of a section."""
+
     document: _ScannedDocument
-    line_number: int
+    line_start: int
+    line_end: int
     text: str
-    line_terms: list[str]
+    is_heading: bool
+    terms: list[str]
     context_terms: set[str]
     document_terms: set[str]
     heading_text: str | None = None
     coverage: int = 0
     score: float = 0.0
-    match_location: int = 0
 
 
 # Words that carry no retrieval signal in natural-language questions and instructions.
@@ -623,17 +510,34 @@ _SUMMARY_INTENT = frozenset("summarize summarise summary summaries overview".spl
 # Comparisons need breadth: each side's facts rarely repeat every query term.
 _COMPARE_INTENT = frozenset("compare comparing comparison contrast versus vs difference differences between".split())
 # Closing punctuation, optionally followed by a closing quote or bracket.
-_ENDS_SENTENCE = re.compile(r"[.!?:;][\"'”’)\]]*$")
-_ENDS_QUOTE = re.compile(r"[.!?,]?[\"”]$")
-_ATTRIBUTION_LINE_CHARS = 60
-_ANSWER_LINE = re.compile(r"^(answers?|solutions?|a)\s*[:.)]", re.IGNORECASE)
+_ENDS_SENTENCE = re.compile(r"[.!?][\"'”’)\]]*$")
+# The same, inside running text, followed by the start of another sentence.
+_SENTENCE_BREAK = re.compile(r"[.!?][\"'”’)\]]*\s+(?=[\"“‘(\[]?[A-Z0-9])")
 _BM25_K1 = 1.2
 _BM25_B = 0.75
 _CONTEXT_WEIGHT = 0.5
+# Passages scoring below this share of the best passage are noise, not evidence.
+_MIN_RELATIVE_SCORE = 0.35
+# A passage that follows a break repeats up to this much of the text before it, so a
+# title, a question, or the sentence naming the subject is not cut off from what follows.
+_CARRY_CHARS = 200
+# Where a section may be divided, best first.
+_BREAK_PARAGRAPH = 0  # after a blank line
+_BREAK_LINE_SENTENCE = 1  # a new line after a finished sentence
+_BREAK_SENTENCE = 2  # between two sentences on one line
+_BREAK_LINE = 3  # a new line in the middle of a sentence
 
 
 def _tokens(text: str) -> list[str]:
     return [token for token in re.findall(r"[a-z0-9]+", text.casefold()) if len(token) >= 2]
+
+
+def _content_terms(text: str) -> list[str]:
+    return [
+        _stem(token)
+        for token in _tokens(text)
+        if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
+    ]
 
 
 def _query_profile(query: str) -> tuple[list[str], bool, bool]:
@@ -654,44 +558,48 @@ def _query_profile(query: str) -> tuple[list[str], bool, bool]:
     return list(dict.fromkeys(terms)), summary_intent, compare_intent
 
 
-def _rank_lines(
+def _rank_units(
     documents: list[_ScannedDocument],
     query: str,
     *,
     limit: int,
     case_sensitive: bool,
-) -> tuple[list[_LineUnit], bool]:
-    """Top-coverage tier of lines, ordered by BM25 with heading and file-name context.
+    passage_chars: int,
+    max_result_chars: int,
+) -> tuple[list[_Unit], bool]:
+    """The best-matching passages, ordered by BM25 with heading and file-name context.
 
-    Coverage is the number of distinct query terms present in a line or its document
-    context (nearest markdown heading and file name), so a fact line such as "The trial
-    completed in 3 hours." under "# Project Beacon" still matches a Beacon query. Only the
-    highest-coverage tier is returned: specific questions yield the best line, while
-    multi-fact queries keep every line that covers as many terms.
+    Documents are searched as passages (see ``_passages``), so a match brings the
+    sentences around it: the rest of a wrapped sentence, the answer under a question,
+    the name under a quotation. A passage also matches on its document context (nearest
+    markdown heading and file name), so "The trial completed in 3 hours." under
+    "# Project Beacon" still answers a Beacon query. Results stop at ``limit`` units or
+    ``max_result_chars`` characters, whichever comes first.
     """
 
-    units = _line_units(documents)
+    units = _units(documents, passage_chars)
     terms, summary_intent, compare_intent = _query_profile(query)
     if not terms:
-        return units[:limit], len(units) > limit
+        return _bounded(units, limit, max_result_chars)
     term_set = set(terms)
     document_frequency = {
-        term: sum(1 for unit in units if term in unit.context_terms or term in unit.line_terms)
+        term: sum(1 for unit in units if term in unit.context_terms or term in unit.terms)
         for term in term_set
     }
     total = max(1, len(units))
-    average_length = sum(len(unit.line_terms) for unit in units) / total or 1.0
-    needle = query if case_sensitive else query.casefold()
+    average_length = sum(len(unit.terms) for unit in units) / total or 1.0
+    needle = " ".join(query.split()) if case_sensitive else " ".join(query.casefold().split())
     for unit in units:
-        line_counts: dict[str, int] = {}
-        for token in unit.line_terms:
-            line_counts[token] = line_counts.get(token, 0) + 1
-        present = {term for term in term_set if term in line_counts or term in unit.context_terms}
+        counts: dict[str, int] = {}
+        for token in unit.terms:
+            if token in term_set:
+                counts[token] = counts.get(token, 0) + 1
+        present = {term for term in term_set if term in counts or term in unit.context_terms}
         unit.coverage = len(present)
-        length_norm = 1 - _BM25_B + _BM25_B * len(unit.line_terms) / average_length
+        length_norm = 1 - _BM25_B + _BM25_B * len(unit.terms) / average_length
         score = 0.0
         for term in present:
-            frequency = line_counts.get(term, 0) + (_CONTEXT_WEIGHT if term in unit.context_terms else 0.0)
+            frequency = counts.get(term, 0) + (_CONTEXT_WEIGHT if term in unit.context_terms else 0.0)
             df = document_frequency[term]
             idf = math.log(1 + (total - df + 0.5) / (df + 0.5))
             score += idf * frequency * (_BM25_K1 + 1) / (frequency + _BM25_K1 * length_norm)
@@ -699,30 +607,40 @@ def _rank_lines(
         if len(needle) >= 3 and needle in haystack:
             score += 1.0  # literal phrase bonus
         unit.score = score
-        unit.match_location = _first_location(haystack, terms)
-    best = max((unit.coverage for unit in units), default=0)
-    if best == 0:
-        # Nothing matches: an overview request gets document lines; a fact question gets none.
-        return (units[:limit], len(units) > limit) if summary_intent else ([], False)
+    matching = [unit for unit in units if unit.coverage]
+    if not matching:
+        # Nothing matches: an overview request gets the documents' openings; a fact question gets none.
+        return _bounded(units, limit, max_result_chars) if summary_intent else ([], False)
     if compare_intent:
-        compared = _comparison_lines(units, term_set)
+        compared = _comparison_units(units, term_set)
         if compared:
-            return compared[:limit], len(compared) > limit
-    tier = [unit for unit in units if unit.coverage == best]
-    # Headings are navigation, not facts: rank them after content lines of equal coverage.
-    tier.sort(
-        key=lambda unit: (-unit.coverage, unit.text.lstrip().startswith("#"), -unit.score)
-    )  # stable: ties keep document order
-    return tier[:limit], len(tier) > limit
+            return _bounded(compared, limit, max_result_chars)
+    # Headings are navigation, not facts: rank them after every passage.
+    matching.sort(key=lambda unit: (unit.is_heading, -unit.score))  # stable: ties keep document order
+    floor = matching[0].score * _MIN_RELATIVE_SCORE
+    return _bounded([unit for unit in matching if unit.score >= floor], limit, max_result_chars)
 
 
-def _comparison_lines(units: list[_LineUnit], terms: set[str]) -> list[_LineUnit]:
-    """For comparisons: every content line in a compared subject's documents that states
-    at least one compared attribute.
+def _bounded(units: list[_Unit], limit: int, max_chars: int) -> tuple[list[_Unit], bool]:
+    """Leading units within the count and character limits (never fewer than one)."""
+
+    selected: list[_Unit] = []
+    used = 0
+    for unit in units[:limit]:
+        if selected and used + len(unit.text) > max_chars:
+            break
+        selected.append(unit)
+        used += len(unit.text)
+    return selected, len(units) > len(selected)
+
+
+def _comparison_units(units: list[_Unit], terms: set[str]) -> list[_Unit]:
+    """For comparisons: every passage in a compared subject's documents that states at
+    least one compared attribute.
 
     Subjects are query terms that name a document (its heading or file name); attributes
-    are the remaining terms. Facts for each side are often spread over short lines that
-    repeat few query terms, so a single coverage tier would drop them.
+    are the remaining terms. Each side's facts sit in its own document and repeat few of
+    the query's terms, so ranking by score alone would favour one side.
     """
 
     subjects = {term for term in terms if any(term in unit.document_terms for unit in units)}
@@ -732,44 +650,55 @@ def _comparison_lines(units: list[_LineUnit], terms: set[str]) -> list[_LineUnit
     selected = [
         unit
         for unit in units
-        if unit.document_terms & subjects
-        and set(unit.line_terms) & attributes
-        and not unit.text.lstrip().startswith("#")
+        if unit.document_terms & subjects and set(unit.terms) & attributes and not unit.is_heading
     ]
     selected.sort(key=lambda unit: (-unit.coverage, -unit.score))
     return selected
 
 
-def _line_units(documents: list[_ScannedDocument]) -> list[_LineUnit]:
-    units: list[_LineUnit] = []
+def _units(documents: list[_ScannedDocument], passage_chars: int) -> list[_Unit]:
+    units: list[_Unit] = []
     for document in documents:
-        name_terms = {
-            _stem(token)
-            for token in _tokens(PurePosixPath(document.relative_path).stem)
-            if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
-        }
+        name_terms = set(_content_terms(PurePosixPath(document.relative_path).stem))
         heading_terms: set[str] = set()
         heading_text: str | None = None
-        for line_number, line in enumerate(document.lines, start=1):
-            stripped = line.strip()
-            if not stripped:
+        section: list[tuple[int, str]] = []
+        # A trailing heading marker closes the last section.
+        for line_number, line in [*enumerate(document.lines, start=1), (0, "#")]:
+            text = " ".join(line.split())
+            if not text.startswith("#"):
+                section.append((line_number, text))
                 continue
-            if stripped.startswith("#"):
-                heading_text = stripped.lstrip("#").strip()[:200] or None
-            line_terms = [
-                _stem(token)
-                for token in _tokens(stripped)
-                if token not in QUERY_STOPWORDS and token not in _INSTRUCTION_WORDS
-            ]
-            if stripped.startswith("#"):
-                heading_terms = set(line_terms)
+            for line_start, line_end, passage in _passages(section, passage_chars):
+                terms = _content_terms(passage)
+                units.append(
+                    _Unit(
+                        document=document,
+                        line_start=line_start,
+                        line_end=line_end,
+                        text=passage,
+                        is_heading=False,
+                        terms=terms,
+                        context_terms=(heading_terms | name_terms) - set(terms),
+                        document_terms=heading_terms | name_terms,
+                        heading_text=heading_text,
+                    )
+                )
+            section = []
+            if line_number == 0:
+                break
+            heading_text = text.lstrip("#").strip()[:200] or None
+            terms = _content_terms(text)
+            heading_terms = set(terms)
             units.append(
-                _LineUnit(
+                _Unit(
                     document=document,
-                    line_number=line_number,
-                    text=line,
-                    line_terms=line_terms,
-                    context_terms=(heading_terms | name_terms) - set(line_terms),
+                    line_start=line_number,
+                    line_end=line_number,
+                    text=text,
+                    is_heading=True,
+                    terms=terms,
+                    context_terms=name_terms - heading_terms,
                     document_terms=heading_terms | name_terms,
                     heading_text=heading_text,
                 )
@@ -777,9 +706,99 @@ def _line_units(documents: list[_ScannedDocument]) -> list[_LineUnit]:
     return units
 
 
-def _first_location(haystack: str, terms: list[str]) -> int:
-    locations = [haystack.find(term) for term in terms if haystack.find(term) >= 0]
-    return min(locations) if locations else 0
+def _passages(lines: list[tuple[int, str]], target: int) -> list[tuple[int, int, str]]:
+    """Divide one section into passages: (first line, last line, text).
+
+    The section's lines are joined into running text, so line wrapping (as in text
+    extracted from a PDF) does not matter. A section up to one and a half times
+    ``target`` characters stays whole. A longer one is divided into passages of about
+    ``target`` characters at the best break available near that length: a blank line,
+    else the end of a sentence, else a line break, else a space.
+    """
+
+    parts: list[str] = []
+    line_offsets: list[int] = []
+    line_numbers: list[int] = []
+    breaks: dict[int, int] = {}
+    length = 0
+    after_blank = False
+    for line_number, text in lines:
+        if not text:
+            after_blank = True
+            continue
+        if parts:
+            length += 1  # the joining space
+            if after_blank:
+                breaks[length] = _BREAK_PARAGRAPH
+            elif _ENDS_SENTENCE.search(parts[-1]):
+                breaks[length] = _BREAK_LINE_SENTENCE
+            else:
+                breaks[length] = _BREAK_LINE
+        line_offsets.append(length)
+        line_numbers.append(line_number)
+        parts.append(text)
+        length += len(text)
+        after_blank = False
+    if not parts:
+        return []
+    joined = " ".join(parts)
+    for found in _SENTENCE_BREAK.finditer(joined):
+        breaks.setdefault(found.end(), _BREAK_SENTENCE)
+    ordered = sorted(breaks)
+
+    spans: list[tuple[int, int]] = []
+    start = 0
+    hard_limit = target * 3 // 2
+    while len(joined) - start > hard_limit:
+        remaining = len(joined) - start
+        aim = start + remaining // math.ceil(remaining / target)
+        in_range = ordered[
+            bisect.bisect_left(ordered, start + target // 2) : bisect.bisect_right(ordered, start + hard_limit)
+        ]
+        end, kind = 0, _BREAK_LINE
+        for wanted in (_BREAK_PARAGRAPH, _BREAK_LINE_SENTENCE, _BREAK_SENTENCE, _BREAK_LINE):
+            candidates = [offset for offset in in_range if breaks[offset] == wanted]
+            if candidates:
+                end, kind = min(candidates, key=lambda offset: abs(offset - aim)), wanted
+                break
+        if not end:
+            space = joined.rfind(" ", start + target // 2, start + target)
+            end = space + 1 if space >= 0 else start + target
+        spans.append((start, end))
+        start = _carry_start(ordered, breaks, start, end, kind)
+    spans.append((start, len(joined)))
+
+    passages: list[tuple[int, int, str]] = []
+    for span_start, span_end in spans:
+        text = joined[span_start:span_end].strip()
+        if not text:
+            continue
+        first = bisect.bisect_right(line_offsets, span_start) - 1
+        last = bisect.bisect_right(line_offsets, span_start + len(joined[span_start:span_end].rstrip()) - 1) - 1
+        passages.append((line_numbers[first], line_numbers[last], text))
+    return passages
+
+
+def _carry_start(ordered: list[int], breaks: dict[int, int], start: int, end: int, kind: int) -> int:
+    """Where the passage after a break begins: at the break, or up to ``_CARRY_CHARS`` earlier.
+
+    After a blank line, a short closing paragraph (a title, a question) is repeated
+    whole; a long one is not. After a sentence break, the last sentence or two are.
+    """
+
+    if kind == _BREAK_PARAGRAPH:
+        index = bisect.bisect_left(ordered, end) - 1
+        while index >= 0 and breaks[ordered[index]] != _BREAK_PARAGRAPH:
+            index -= 1
+        paragraph = ordered[index] if index >= 0 else 0
+        return paragraph if paragraph > start and end - paragraph <= _CARRY_CHARS else end
+    if kind in (_BREAK_LINE_SENTENCE, _BREAK_SENTENCE):
+        index = bisect.bisect_left(ordered, end - _CARRY_CHARS)
+        while index < len(ordered) and ordered[index] < end:
+            if ordered[index] > start and breaks[ordered[index]] != _BREAK_LINE:
+                return ordered[index]
+            index += 1
+    return end
 
 
 _STEM_SUFFIXES = ("ations", "ation", "ions", "ion", "ings", "ing", "ers", "er", "ies", "ied", "ed", "es", "s", "e")

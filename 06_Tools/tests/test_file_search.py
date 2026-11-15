@@ -90,8 +90,10 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(match["source_id"], "fixtures:notes.md")
         self.assertEqual(match["relative_path"], "notes.md")
         self.assertEqual(match["content_sha256"], hashlib.sha256(self.notes_bytes).hexdigest())
-        self.assertEqual((match["line_start"], match["line_end"]), (1, 1))
+        # A short document is one passage: the citation spans all of its lines.
+        self.assertEqual((match["line_start"], match["line_end"]), (1, 3))
         self.assertEqual(match["line_number"], 1)
+        self.assertIn("Project Atlas launched on 2025-02-14.", match["snippet"])
         self.assertNotIn(str(self.root), str(result.output))
 
     async def test_hidden_sensitive_and_disallowed_files_are_skipped(self) -> None:
@@ -108,8 +110,8 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         _, result = await self.execute(self.make_tool(), "Project Atlas launch date")
 
         self.assertTrue(result.success)
-        self.assertEqual(len(result.output["matches"]), 1)
-        self.assertEqual(result.output["matches"][0]["snippet"], "Project Atlas launched on 2025-02-14.")
+        self.assertEqual(result.output["matches"][0]["relative_path"], "notes.md")
+        self.assertIn("Project Atlas launched on 2025-02-14.", result.output["matches"][0]["snippet"])
 
     async def test_term_fallback_matches_owner_and_owns_variants(self) -> None:
         _, result = await self.execute(self.make_tool(), "Who owns Project Atlas?")
@@ -122,7 +124,6 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         _, result = await self.execute(self.make_tool(), "Beacon review owner")
 
         self.assertTrue(result.success)
-        self.assertEqual(len(result.output["matches"]), 1)
         self.assertEqual(result.output["matches"][0]["relative_path"], "nested/beacon.md")
 
     async def test_term_fallback_matches_completion_to_completed_line(self) -> None:
@@ -160,16 +161,14 @@ class ReadOnlyFileSearchTests(unittest.IsolatedAsyncioTestCase):
         (self.root / "binary.md").write_bytes(b"binary sentinel\x00payload")
         tool = self.make_tool(max_file_size_bytes=1_024, max_matches=1)
 
-        _, ordinary_result = await self.execute(tool, "Project Atlas", max_matches=100)
+        # Three documents mention Beacon equally; the host cap of 1 wins over the request for 100.
+        _, ordinary_result = await self.execute(tool, "Beacon", max_matches=100)
         _, oversized_result = await self.execute(tool, "oversize sentinel")
         _, binary_result = await self.execute(tool, "binary sentinel")
 
         self.assertTrue(ordinary_result.success)
         self.assertEqual(len(ordinary_result.output["matches"]), 1)
-        self.assertEqual(
-            ordinary_result.output["matches"][0]["relative_path"],
-            "notes.md",
-        )
+        self.assertTrue(ordinary_result.output["matches"][0]["relative_path"].startswith("nested/"))
         self.assertTrue(ordinary_result.output["truncated"])
         self.assertGreaterEqual(ordinary_result.output["skipped_entries"], 4)
         self.assertEqual(oversized_result.output["matches"], [])

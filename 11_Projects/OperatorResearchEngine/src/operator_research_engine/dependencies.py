@@ -47,6 +47,7 @@ def build_engine(settings: ProjectSettings) -> OperatorResearchEngine:
                 max_retries=settings.ollama.max_retries,
                 max_tokens_per_request=max(settings.ollama.max_tokens, 4096),
                 think=routing_policy.native_thinking,
+                context_tokens=settings.ollama.context_tokens,
             )
         )
     elif settings.model_provider == "runpod":

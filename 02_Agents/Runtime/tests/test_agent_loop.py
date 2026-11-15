@@ -21,6 +21,9 @@ from agi_tools import (
 
 SEARCH = "read_only_file_search"
 READER = "read_only_file_reader"
+# The host also searches on the goal itself. This goal's own words reach only the Kestrel
+# document, so the second subject still has to come from a follow-up.
+RIVAL_GOAL = "How does Kestrel measure up against its rival?"
 
 
 def reply(payload: dict) -> ScriptedReply:
@@ -81,16 +84,16 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
         record, phases = await self.run_case(
             [
                 plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel flow rate"}}),
-                reply({"tool_calls": [{"tool_name": SEARCH, "arguments": {"query": "Osprey flow rate"}}]}),
+                reply({"tool_calls": [{"tool_name": SEARCH, "arguments": {"query": "Osprey litres per minute"}}]}),
                 reply({"answer": "Kestrel moves 40 and Osprey 55 litres per minute."}),
             ],
             requirements,
-            "Compare the Kestrel and Osprey pump flow rates.",
+            RIVAL_GOAL,
         )
         self.assertEqual(phases, ["plan", "observe", "answer"])
         self.assertEqual(
             [request.arguments["query"] for request in record.tool_requests],
-            ["Kestrel flow rate", "Osprey flow rate"],
+            [RIVAL_GOAL, "Kestrel flow rate", "Osprey litres per minute"],
         )
         excerpts = " ".join(item.excerpt for item in record.evidence_bundle.items)
         self.assertIn("[K1]", excerpts)
@@ -123,7 +126,7 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
             requirements,
             "What is the Kestrel pump flow rate?",
         )
-        self.assertEqual([request.tool_name for request in record.tool_requests], [SEARCH])
+        self.assertEqual({request.tool_name for request in record.tool_requests}, {SEARCH})
         self.assertTrue(all(result.success for result in record.tool_results))
         reader_history = [item for item in record.tool_argument_histories if item.tool_name == READER]
         self.assertFalse(reader_history[0].validation_result.valid)
@@ -144,7 +147,7 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
             requirements,
             "What is the Kestrel pump flow rate?",
         )
-        self.assertEqual([request.tool_name for request in record.tool_requests], [SEARCH])
+        self.assertEqual({request.tool_name for request in record.tool_requests}, {SEARCH})
         self.assertTrue(all(result.success for result in record.tool_results))
         self.assertEqual(phases, ["plan", "answer"])
 
@@ -169,11 +172,11 @@ class AgentLoopTests(unittest.IsolatedAsyncioTestCase):
                 reply({"answer": "Kestrel moves 40 and Osprey 55 litres per minute."}),
             ],
             requirements,
-            "Compare the Kestrel and Osprey pump flow rates.",
+            RIVAL_GOAL,
         )
         self.assertEqual(phases, ["plan", "observe", "answer"])
         dispatched = [result.tool_name for result in record.tool_results if result.success]
-        self.assertEqual(dispatched, [SEARCH, READER])
+        self.assertEqual(dispatched, [SEARCH, SEARCH, READER])
         denied = [decision.tool_name for decision in record.permission_decisions if not decision.allowed]
         self.assertIn("delete_file", denied)
         self.assertIn("[O1]", " ".join(item.excerpt for item in record.evidence_bundle.items))
@@ -209,7 +212,10 @@ class CalculatorAfterEvidenceTests(AgentLoopTests):
         self.assertEqual(phases, ["plan", "plan_correction", "observe", "answer"])
         self.assertEqual(
             record.metadata["host_actions"],
-            [{"action": "deferred_required_capability", "capabilities": ["calculator"]}],
+            [
+                {"action": "deferred_required_capability", "capabilities": ["calculator"]},
+                {"action": "host_question_search", "tool_name": SEARCH},
+            ],
         )
         calculator = [result for result in record.tool_results if result.tool_name == "calculator"]
         self.assertTrue(calculator and calculator[0].success)
