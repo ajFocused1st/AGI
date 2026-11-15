@@ -349,11 +349,19 @@ class RuleBasedEvaluator:
         answer_for_support = canonical_dates(
             strip_uncertainty_sentences(_strip_rendered_citations(answer_body))
         )
-        answer_tokens = _concrete_tokens(answer_for_support)
+        answer_tokens = _concrete_tokens(answer_for_support) - _FRAMING_TOKENS
         if not answer_tokens:
             return True, "The answer contains no concrete claim tokens to check."
 
-        cited_tokens = _concrete_tokens(cited_text)
+        # A result the calculator computed in this run (from operands it was given) supports
+        # that number even when the answer cites only the documents the operands came from.
+        computed_text = "\n".join(
+            f"{item.excerpt or ''} {item.metadata.get('value', '')}"
+            for item in evidence
+            if item.metadata.get("retrieval_tool") == "calculator"
+            or item.source_id == "tool:calculator"
+        )
+        cited_tokens = _concrete_tokens(cited_text) | _concrete_tokens(computed_text)
         supported = sorted(answer_tokens & cited_tokens)
         minimum_overlap = min(len(answer_tokens), max(2, (len(answer_tokens) + 1) // 2))
         # A cited line's document title (e.g. "Cedar Initiative") is part of its provenance.
@@ -366,13 +374,18 @@ class RuleBasedEvaluator:
         cited_words = set(cited_sequence) | {
             first + second for first, second in zip(cited_sequence, cited_sequence[1:])
         }
+        # So is the cited file's name ("Northwind_Ferry_Cooperative_Reference.txt").
+        for item in document_items:
+            cited_words |= set(re.findall(r"[a-z0-9]+", (item.source_path or "").casefold()))
         missing_entities = sorted(_answer_entity_terms(answer_for_support) - cited_words)
         # Dates and multi-digit numbers are high-risk facts: each must appear in cited
         # evidence (documents or calculator results), however many other words overlap.
         unsupported_dates = sorted(
             set(_ISO_DATE.findall(answer_for_support)) - set(_ISO_DATE.findall(cited_text))
         )
-        all_cited_text = canonical_dates("\n".join(item.excerpt or "" for item in cited_evidence))
+        all_cited_text = canonical_dates(
+            "\n".join(item.excerpt or "" for item in cited_evidence) + "\n" + computed_text
+        )
         cited_numbers = _numbers_for_support(all_cited_text) | {
             part for date in _ISO_DATE.findall(all_cited_text) for part in date.split("-")
         }
@@ -531,8 +544,11 @@ def contains_uncertainty_statement(text: str) -> bool:
 
 def _numbers_in_text(value: str) -> set[Decimal]:
     numbers: set[Decimal] = set()
-    for match in re.finditer(r"(?<![\w.])-?(?:\d+(?:\.\d*)?|\.\d+)(?![\w.])", value):
-        parsed = _decimal_or_none(match.group(0))
+    # "33,075" is one number (thousands separators), not 33 and 075.
+    for match in re.finditer(
+        r"(?<![\w.,])-?(?:\d{1,3}(?:,\d{3})+(?:\.\d*)?|\d+(?:\.\d*)?|\.\d+)(?![\w.])", value
+    ):
+        parsed = _decimal_or_none(match.group(0).replace(",", ""))
         if parsed is not None:
             numbers.add(parsed)
     return numbers
@@ -605,8 +621,10 @@ def _concrete_tokens(value: str) -> set[str]:
     matches, while dates and numbers stay exact."""
 
     tokens: set[str] = set()
-    for match in re.finditer(r"[A-Za-z][A-Za-z0-9_-]{2,}|\d{4}-\d{2}-\d{2}|\d+", value):
-        token = match.group(0).casefold()
+    for match in re.finditer(
+        r"[A-Za-z][A-Za-z0-9_-]{2,}|\d{4}-\d{2}-\d{2}|\d{1,3}(?:,\d{3})+(?!\d)|\d+", value
+    ):
+        token = match.group(0).casefold().replace(",", "")
         if token in _STOPWORDS:
             continue
         tokens.add(_stem(token) if token[0].isalpha() else token)
@@ -632,7 +650,59 @@ def _stem(term: str) -> str:
     return term
 
 
+# Words an answer uses to talk about its evidence ("the available evidence states
+# that ..."). They describe the source, not the world, so they are not claims to check.
+_FRAMING_TOKENS = frozenset(
+    _concrete_tokens(
+        "according available document documents evidence excerpt explicitly indicates "
+        "mentions passage provided shows source sources stated states text "
+        # ... and to frame a computed result ("based on ..., the calculated number ...").
+        "based between calculated calculation computed number "
+        # ... and to name kinds of information rather than state them ("the documents
+        # only give the launch date, sample count and completion time").
+        "amount count date details figures information only specific time value"
+    )
+)
+
+
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+# Wording with which a document itself says something is missing or withheld.
+_EXPLICIT_ABSENCE = re.compile(
+    r"\b(not (stated|recorded|listed|included|published|disclosed|available|provided|known|"
+    r"given|specified|reported)|outside (of )?(the |this )?scope|unknown|withheld|redacted|"
+    r"confidential|undisclosed|no record)\b",
+    re.IGNORECASE,
+)
+
+
+def unverified_absence(goal: str, answer: str, evidence: Sequence[EvidenceReference]) -> str | None:
+    """The answer's claim that what the question asks for is missing, if nothing confirms it.
+
+    "The evidence does not contain X" cannot be checked against the evidence: a search
+    can simply have missed the passage. It is confirmed only when a retrieved passage
+    itself says X is missing (for example "home telephone numbers are outside the scope
+    of this report"). Statements about something the question did not ask are ignored.
+    """
+
+    goal_tokens = _concrete_tokens(goal) - _FRAMING_TOKENS
+    absence_passages = [
+        _concrete_tokens(sentence)
+        for item in evidence
+        for sentence in _SENTENCE_SPLIT.split(item.excerpt or "")
+        if _EXPLICIT_ABSENCE.search(sentence) or contains_uncertainty_statement(sentence)
+    ]
+    for sentence in _SENTENCE_SPLIT.split(_strip_rendered_citations(answer)):
+        if not contains_uncertainty_statement(sentence):
+            continue
+        tokens = _concrete_tokens(sentence) - _FRAMING_TOKENS
+        if len(tokens & goal_tokens) < 2:
+            continue  # not about what was asked
+        if any(len(tokens & passage) >= 2 for passage in absence_passages):
+            continue  # the document itself says it is missing
+        return " ".join(sentence.split())
+    return None
 
 
 def strip_uncertainty_sentences(text: str) -> str:

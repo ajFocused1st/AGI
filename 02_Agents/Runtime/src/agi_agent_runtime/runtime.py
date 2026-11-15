@@ -29,6 +29,7 @@ from agi_contracts import (
     PermissionDecision,
     PlanRequirementResult,
     ResponseRequirementResult,
+    RuleBasedCheck,
     RunRecord,
     RunStatus,
     StepStatus,
@@ -45,6 +46,7 @@ from agi_evaluation import (
     EvaluationExpectations,
     RuleBasedEvaluator,
     contains_uncertainty_statement,
+    unverified_absence,
 )
 
 from .drafts import AnswerDraft, CritiqueDraft, FollowUpDraft, PlanDraft, ToolCallDraft
@@ -772,6 +774,44 @@ class AgentRuntime:
             expectations=state.expectations,
             unsupported_claims=list(state.known_unsupported_claims or []) + uncited_claims,
         )
+        if (
+            not state.requirements.requires_grounding
+            and not state.requirements.requires_citations
+            and state.citations
+            and any(
+                check.name == "document_evidence_support" and not check.passed
+                for check in evaluation.rule_based_checks
+            )
+        ):
+            # The task needs no sources (e.g. "write a three-step plan"), yet the model
+            # attached citations that do not back their sentences. Showing them would
+            # imply support that is not there, so they are removed and the answer is
+            # judged as the uncited answer it really is.
+            draft = draft.model_copy(
+                update={
+                    "cited_evidence_ids": [],
+                    "claims": [claim.model_copy(update={"evidence_ids": []}) for claim in draft.claims],
+                }
+            )
+            state.answer_draft = draft
+            state.answer_text = self._augment_answer(
+                self._render_answer_draft(draft, state.evidence), state.tool_results
+            )
+            state.citations = []
+            state.host_actions.append({"action": "removed_unsupported_citations"})
+            evaluation = self._evaluator.evaluate(
+                run_id=state.run_id,
+                request=state.request,
+                plan=state.plan,
+                answer=state.answer_text,
+                evidence=state.evidence,
+                citations=[],
+                tool_requests=state.tool_requests,
+                tool_results=state.tool_results,
+                permission_decisions=state.decisions,
+                expectations=state.expectations,
+                unsupported_claims=list(state.known_unsupported_claims or []),
+            )
         result = validate_response_requirements(
             state.requirements,
             answer=state.answer_text,
@@ -821,6 +861,51 @@ class AgentRuntime:
         result = state.response_requirement_result
         if result is not None and not result.valid:
             evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
+        # A blocked plan means the answer was written without a tool the task required, so
+        # even "the evidence does not contain it" is unchecked: no search may have run at all.
+        never_ran = [
+            capability
+            for capability in state.requirements.required_capabilities
+            if not any(item.tool_name == capability and item.success for item in state.tool_results)
+        ]
+        if state.dispatch_blocked and never_ran:
+            evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
+        # "The evidence does not contain it" cannot be confirmed by a search that may have
+        # missed the passage. For a question answered from the documents, unless the task
+        # expected missing information or a retrieved passage says so itself, such an
+        # answer is reported as partial, not passed. (Plans and refusals are not questions
+        # about the documents, so their wording is not judged this way.)
+        asks_documents = (
+            HOST_RETRIEVAL_TOOL in state.requirements.required_capabilities
+            or state.requirements.requires_grounding
+        )
+        absence = (
+            unverified_absence(state.request.goal, state.answer_text, state.evidence)
+            if evaluation.verdict == EvaluationVerdict.PASSED
+            and asks_documents
+            and not state.requirements.requires_uncertainty_statement
+            else None
+        )
+        if absence is not None:
+            evaluation = evaluation.model_copy(
+                update={
+                    "verdict": EvaluationVerdict.PARTIAL,
+                    "rule_based_checks": [
+                        *evaluation.rule_based_checks,
+                        RuleBasedCheck(
+                            name="absence_verified",
+                            passed=False,
+                            score=0.0,
+                            weight=0.0,
+                            details=(
+                                "The answer says the requested information is missing, but no "
+                                "retrieved passage says so; a search can miss a passage. "
+                                f"Statement: {absence[:200]}"
+                            ),
+                        ),
+                    ],
+                }
+            )
         state.evaluation = evaluation
 
     async def _persist_failure(self, state: _RunState, answer: str) -> None:
@@ -1146,7 +1231,12 @@ class AgentRuntime:
                 known_numbers=known_numbers,
                 known_terms=known_terms,
             )
-            deferred = can_defer and _only_ungrounded_operands(initial)
+            # A calculation proposed before its operands are retrieved (often with an empty
+            # expression) waits for the observe round; repairing it now only invents numbers.
+            deferred = can_defer and (
+                _only_ungrounded_operands(initial)
+                or proposal.tool_name in _EVIDENCE_DEPENDENT_CAPABILITIES
+            )
             if not initial.valid and (
                 deferred
                 or proposal.tool_name not in requirements.required_capabilities

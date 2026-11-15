@@ -181,5 +181,165 @@ class DocumentTitleProvenanceTests(unittest.TestCase):
         )
 
 
+class CorrectAnswerFalseAlarmTests(unittest.TestCase):
+    """Real-documents runs (2026-11-15): correct answers were failed; wrong ones must still fail."""
+
+    def _supported(
+        self,
+        answer: str,
+        excerpt: str,
+        *,
+        goal: str = "",
+        path: str = "atlas.md",
+        computed: str | None = None,
+    ) -> bool:
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        document = EvidenceReference(
+            evidence_id=uuid4(), source_id=f"d:{path}", source_path=path, excerpt=excerpt
+        )
+        evidence = [document]
+        if computed is not None:
+            expression, value = computed.split(" = ")
+            evidence.append(
+                EvidenceReference(
+                    evidence_id=uuid4(),
+                    source_id="tool:calculator",
+                    excerpt=computed,
+                    metadata={"retrieval_tool": "calculator", "expression": expression, "value": int(value)},
+                    source_path="tool:calculator",
+                )
+            )
+        supported, _ = RuleBasedEvaluator._document_claim_support(
+            goal=goal,
+            answer=answer,
+            evidence=evidence,
+            citations=[Citation(evidence_id=document.evidence_id, label=path)],  # documents only
+        )
+        return supported
+
+    def test_words_about_the_evidence_are_not_claims(self) -> None:
+        goal = "Who owns the Atlas review? Use only approved local documents and cite the source."
+        excerpt = "[A4] Mina Chen owns the Atlas review."
+        lead_in = "The available evidence states that {} owns the Atlas review."
+        self.assertTrue(self._supported(lead_in.format("Mina Chen"), excerpt, goal=goal))
+        self.assertFalse(self._supported(lead_in.format("Nora Patel"), excerpt, goal=goal))
+
+    def test_the_cited_file_name_is_provenance(self) -> None:
+        excerpt = "Nila Orsen, Dispatch Manager, said a reliable ferry is not just a vessel that arrives."
+        path = "Northwind_Ferry_Cooperative_Reference.txt"
+        answer = "Nila Orsen is the Dispatch Manager of the {} Ferry Cooperative."
+        self.assertTrue(self._supported(answer.format("Northwind"), excerpt, path=path))
+        self.assertFalse(self._supported(answer.format("Southwind"), excerpt, path=path))
+
+    def test_a_number_the_calculator_computed_is_supported(self) -> None:
+        goal = "By how many tickets did Harbour Link's passenger sales increase from 2024 to 2025?"
+        excerpt = "Harbour Link recorded 5,730 paid passenger tickets in 2024 and 6,415 in 2025."
+        computed = "(6415 - 5730) = 685"
+        answer = "Harbour Link's passenger sales increased by {} tickets from 2024 to 2025."
+        self.assertTrue(self._supported(answer.format(685), excerpt, goal=goal, computed=computed))
+        self.assertFalse(self._supported(answer.format(885), excerpt, goal=goal, computed=computed))
+        # Without the calculator's result the number has no support.
+        self.assertFalse(self._supported(answer.format(685), excerpt, goal=goal))
+
+    def test_words_framing_a_computed_result_are_not_claims(self) -> None:
+        # Live multihop case mh-04: a correct difference was failed on these words.
+        goal = "Which pilot analyzed more specimens, Cedar or Delta, and by how many? Use the calculator."
+        excerpt = "[C2] During its pilot, Cedar analyzed 240 specimens. [D1] The Delta pilot analyzed 150 specimens."
+        answer = (
+            "Based on the provided evidence, the Cedar pilot analyzed 240 specimens while the Delta "
+            "pilot analyzed 150. The calculated difference between them is {} specimens; that "
+            "number favours Cedar."
+        )
+        computed = "240 - 150 = 90"
+        self.assertTrue(self._supported(answer.format(90), excerpt, goal=goal, computed=computed))
+        self.assertFalse(self._supported(answer.format(80), excerpt, goal=goal, computed=computed))
+
+    def test_naming_kinds_of_information_is_not_a_claim(self) -> None:
+        # Live benchmark v1 case 08: a correct "no such budget" answer was failed.
+        goal = "Using only local benchmark documents, state whether Atlas had a $50000 budget."
+        excerpt = (
+            "[A1] Project Atlas launched on 2025-02-14. [A2] The Atlas trial processed 120 samples. "
+            "[A3] The trial completed in 4 hours. [A4] Mina Chen owns the Atlas review."
+        )
+        right = (
+            "There is no mention of a $50,000 budget for Project Atlas. The documents only state "
+            "launch date, sample count, completion time, and ownership."
+        )
+        wrong = "The documents state that Project Atlas had a $50,000 budget approved by Mina Chen."
+        self.assertTrue(self._supported(right, excerpt, goal=goal))
+        self.assertFalse(self._supported(wrong, excerpt, goal=goal))
+
+    def test_numbers_with_thousands_separators_are_one_number(self) -> None:
+        excerpt = "Harbor Line recorded 12,480 tickets in 2024 and 14,235 in 2025."
+        computed = "(12480 + 14235) = 26715"
+        answer = "Harbor Line sold {} tickets across 2024 and 2025 combined."
+        self.assertTrue(self._supported(answer.format("26,715"), excerpt, computed=computed))
+        self.assertFalse(self._supported(answer.format("26,815"), excerpt, computed=computed))
+
+    def test_cited_calculator_result_matches_a_separated_number(self) -> None:
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        result = EvidenceReference(
+            evidence_id=uuid4(),
+            source_id="tool:calculator",
+            excerpt="8970 + 3455 + 6415 + 14235 = 33075",
+            metadata={"retrieval_tool": "calculator", "value": 33075},
+            source_path="tool:calculator",
+        )
+        citations = [Citation(evidence_id=result.evidence_id, label="calculator")]
+        for answer, expected in (("The total is 33,075 tickets.", True), ("The total is 33,175 tickets.", False)):
+            consistent, _ = RuleBasedEvaluator._calculator_consistency(
+                answer=answer, evidence=[result], citations=citations
+            )
+            self.assertEqual(consistent, expected, answer)
+
+
+class UnverifiedAbsenceTests(unittest.TestCase):
+    """A "not found" answer cannot be confirmed unless the document itself says so."""
+
+    def _absence(self, goal: str, answer: str, *excerpts: str) -> str | None:
+        from uuid import uuid4
+
+        from agi_contracts import EvidenceReference
+        from agi_evaluation import unverified_absence
+
+        evidence = [
+            EvidenceReference(evidence_id=uuid4(), source_id="d", source_path="doc.txt", excerpt=text)
+            for text in excerpts
+        ]
+        return unverified_absence(goal, answer, evidence)
+
+    def test_not_found_after_a_missed_search_is_unverified(self) -> None:
+        # Real first-run answer: the passage existed, the search missed it.
+        goal = "Which service is the scheduled Bellwether Quay to Reedhaven crossing, and how long does it take?"
+        answer = (
+            "The available evidence does not contain the scheduled Bellwether Quay to Reedhaven "
+            "crossing service name or duration."
+        )
+        self.assertIsNotNone(self._absence(goal, answer, "Reedhaven Loop is a circular route."))
+
+    def test_absence_the_document_states_is_verified(self) -> None:
+        goal = "What is the private home telephone number of Mara Ellery?"
+        answer = "The available evidence does not contain the private home telephone number of Mara Ellery."
+        stated = "Private employee home telephone numbers are outside the scope of this report."
+        self.assertIsNone(self._absence(goal, answer, "Mara Ellery leads the review.", stated))
+        self.assertIsNotNone(self._absence(goal, answer, "Mara Ellery leads the review."))
+
+    def test_a_side_remark_about_something_not_asked_is_ignored(self) -> None:
+        goal = "Who leads the Night Berth Renewal review?"
+        answer = "Mara Ellery leads the Night Berth Renewal review. The evidence does not state her salary."
+        self.assertIsNone(self._absence(goal, answer, "Mara Ellery leads the review."))
+
+    def test_a_plain_answer_has_nothing_to_verify(self) -> None:
+        self.assertIsNone(self._absence("Who owns Atlas?", "Mina Chen owns the Atlas review.", "x"))
+
+
 if __name__ == "__main__":
     unittest.main()

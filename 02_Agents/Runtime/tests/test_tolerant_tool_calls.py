@@ -5,6 +5,7 @@ Also covers the host's search on the user's own question, which runs beside the 
 
 from __future__ import annotations
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +36,23 @@ def reply(payload: dict) -> ScriptedReply:
 
 def plan(*calls: dict) -> ScriptedReply:
     return reply({"steps": [{"description": "Research"}], "tool_calls": list(calls)})
+
+
+class CitingAdapter(ScriptedModelAdapter):
+    """Answers by citing the first evidence item it is shown, as the live model did."""
+
+    def __init__(self, replies: list[ScriptedReply], claims: list[str]) -> None:
+        super().__init__(replies)
+        self._claims = claims
+
+    async def generate(self, request):  # type: ignore[override]
+        if "answer" in str(request.metadata.get("phase")):
+            shown = re.search(r'"evidence_id": "([0-9a-f-]{36})"', request.messages[-1].content)
+            ids = [shown.group(1)] if shown else []
+            self._replies.appendleft(
+                reply({"claims": [{"text": text, "evidence_ids": ids} for text in self._claims]})
+            )
+        return await super().generate(request)
 
 
 class ToolCallDraftTests(unittest.TestCase):
@@ -109,8 +127,14 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self._documents.cleanup()
         self._logs.cleanup()
 
-    async def run_case(self, replies: list[ScriptedReply], requirements: TaskRequirements, goal: str):
-        adapter = ScriptedModelAdapter(replies)
+    async def run_case(
+        self,
+        replies: list[ScriptedReply],
+        requirements: TaskRequirements,
+        goal: str,
+        adapter: ScriptedModelAdapter | None = None,
+    ):
+        adapter = adapter or ScriptedModelAdapter(replies)
         runtime = AgentRuntime(
             model_adapter=adapter,
             tool_executor=self.registry,
@@ -312,6 +336,109 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 {"action": "deferred_required_capability", "capabilities": [CALCULATOR]},
             ],
         )
+
+    async def test_calculation_planned_before_its_numbers_waits_instead_of_failing(self) -> None:
+        # Live runs: the plan's calculator call had no expression yet; the repair invented
+        # numbers and logged tool_argument_repair_failed, though the follow-up later succeeded.
+        goal = "How many litres per minute do Kestrel and Osprey move combined?"
+        record, adapter = await self.run_case(
+            [
+                plan(
+                    {"tool_name": SEARCH, "arguments": {"query": "Kestrel Osprey litres per minute"}},
+                    {"tool_name": CALCULATOR, "arguments": {"expression": None}},
+                ),
+                reply({"tool_calls": [{"tool_name": CALCULATOR, "arguments": {"expression": "40 + 55"}}]}),
+                reply({"answer": "Together they move 95 litres per minute."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH, CALCULATOR]),
+            goal,
+        )
+        self.assertNotIn("tool_argument_repair_failed", [error.code for error in record.errors])
+        self.assertNotIn("tool_argument_repair", [item.metadata.get("phase") for item in adapter.requests])
+        calculations = [r for r in record.tool_results if r.tool_name == CALCULATOR]
+        self.assertEqual([r.success for r in calculations], [True])
+
+    # --- citations a task did not ask for ----------------------------------------------
+
+    PLAN_STEPS = [
+        "Step 1: Gather every pump specification sheet.",
+        "Step 2: Tabulate maintenance intervals for each pump.",
+        "Step 3: Recommend a replacement schedule.",
+    ]
+
+    async def test_unsupported_citations_on_a_plan_are_removed_not_failed(self) -> None:
+        # Live benchmark v1 case 02: a three-step plan cited a document on every step, so
+        # the steps were checked as facts and the run failed.
+        adapter = CitingAdapter(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel pump"}})], self.PLAN_STEPS
+        )
+        record, _ = await self.run_case(
+            [], TaskRequirements(), "Write three steps for reviewing the Kestrel pump.", adapter
+        )
+        self.assertTrue(record.evidence_bundle.items)  # there was something to (mis)cite
+        self.assertEqual(record.response.citations, [])
+        self.assertNotIn("kestrel.md", record.response.answer)
+        self.assertIn({"action": "removed_unsupported_citations"}, record.metadata["host_actions"])
+        self.assertNotEqual(record.evaluation.verdict.value, "failed")
+
+    async def test_unsupported_citations_still_fail_when_sources_are_required(self) -> None:
+        adapter = CitingAdapter(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel pump"}})], self.PLAN_STEPS
+        )
+        record, _ = await self.run_case(
+            [],
+            TaskRequirements(
+                required_capabilities=[SEARCH],
+                requires_grounding=True,
+                requires_citations=True,
+                minimum_citation_count=1,
+            ),
+            "Write three steps for reviewing the Kestrel pump.",
+            adapter,
+        )
+        self.assertNotIn("removed_unsupported_citations", str(record.metadata.get("host_actions")))
+        self.assertEqual(record.evaluation.verdict.value, "failed")
+
+    # --- "not found" answers -------------------------------------------------------------
+
+    WARRANTY_GOAL = "What is the Kestrel pump warranty period?"
+    NOT_FOUND = "The available evidence does not contain the Kestrel pump warranty period."
+
+    def not_found_script(self) -> list[ScriptedReply]:
+        return [
+            plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel pump warranty"}}),
+            reply({"answer": self.NOT_FOUND}),
+            reply({"tool_calls": []}),  # the follow-up after a "not found" draft finds nothing new
+            reply({"answer": self.NOT_FOUND}),
+        ]
+
+    async def test_an_unconfirmed_not_found_answer_is_partial(self) -> None:
+        record, _ = await self.run_case(
+            self.not_found_script(), TaskRequirements(required_capabilities=[SEARCH]), self.WARRANTY_GOAL
+        )
+        self.assertEqual(record.evaluation.verdict.value, "partial")
+        check = next(c for c in record.evaluation.rule_based_checks if c.name == "absence_verified")
+        self.assertFalse(check.passed)
+
+    async def test_an_expected_not_found_answer_still_passes(self) -> None:
+        record, _ = await self.run_case(
+            self.not_found_script(),
+            TaskRequirements(required_capabilities=[SEARCH], requires_uncertainty_statement=True),
+            self.WARRANTY_GOAL,
+        )
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    async def test_a_blocked_run_without_its_required_tool_cannot_pass(self) -> None:
+        # Live run: no tool ran, the answer said "the evidence does not contain" it, and the
+        # verdict was "passed".
+        record, _ = await self.run_case(
+            [plan(), plan(), reply({"answer": "The available evidence does not contain the charter date."})],
+            TaskRequirements(required_capabilities=[CALCULATOR]),
+            "What is the charter date?",
+        )
+        self.assertIn("tool_dispatch_blocked", [error.code for error in record.errors])
+        self.assertEqual(record.tool_results, [])
+        self.assertEqual(record.evaluation.verdict.value, "failed")
 
 
 if __name__ == "__main__":

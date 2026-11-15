@@ -7,6 +7,7 @@ from .evaluator import (
     canonical_dates,
     contains_uncertainty_statement,
     strip_uncertainty_sentences,
+    unverified_absence,
 )
 
 __version__ = "0.1.0"
@@ -18,4 +19,5 @@ __all__ = [
     "canonical_dates",
     "contains_uncertainty_statement",
     "strip_uncertainty_sentences",
+    "unverified_absence",
 ]
