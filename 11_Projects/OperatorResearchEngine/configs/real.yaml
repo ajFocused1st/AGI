@@ -11,6 +11,12 @@ ollama:
   max_retries: 1
   temperature: 0
   max_tokens: 2048
+retrieval:
+  # Meaning-based ranking beside keyword search; must be installed (ollama pull nomic-embed-text).
+  embedding_model: nomic-embed-text
+planning:
+  # A question needing only a document search skips the model's planning call.
+  host_plan_search_questions: true
 runpod:
   endpoint_id: ""
   model: qwen3-32b-awq

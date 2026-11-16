@@ -55,6 +55,69 @@ class CitingAdapter(ScriptedModelAdapter):
         return await super().generate(request)
 
 
+class PhaseAdapter(ScriptedModelAdapter):
+    """Replies by request phase, so a test does not depend on how many calls a path makes."""
+
+    BY_PHASE = {
+        "plan": {"steps": [{"description": "Research"}], "tool_calls": [{"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}]},
+        "observe": {"tool_calls": []},
+    }
+
+    def __init__(self, answer: str) -> None:
+        super().__init__([])
+        self._answer = answer
+
+    async def generate(self, request):  # type: ignore[override]
+        phase = str(request.metadata.get("phase"))
+        payload = self.BY_PHASE.get(phase.replace("_correction", "")) or {"answer": self._answer}
+        self._replies.append(reply(payload))
+        return await super().generate(request)
+
+
+class FakeResponseValidationError(Exception):
+    """Named like the adapters' output errors (OllamaResponseValidationError)."""
+
+
+class UnreadableFirstAnswerAdapter(ScriptedModelAdapter):
+    """The first answer is cut off mid-JSON; later answers are fine."""
+
+    def __init__(self, replies: list[ScriptedReply]) -> None:
+        super().__init__(replies)
+        self.failed = False
+
+    async def generate(self, request):  # type: ignore[override]
+        if request.metadata.get("phase") == "answer" and not self.failed:
+            self.failed = True
+            self.requests.append(request.model_copy(deep=True))
+            raise FakeResponseValidationError("Model output was not strict JSON (Unterminated string)")
+        return await super().generate(request)
+
+
+class TruncatedIdAdapter(CitingAdapter):
+    """Cites the evidence id with its last character missing, as the live model did."""
+
+    async def generate(self, request):  # type: ignore[override]
+        if "answer" in str(request.metadata.get("phase")):
+            shown = re.search(r'"evidence_id": "([0-9a-f-]{36})"', request.messages[-1].content)
+            self._replies.appendleft(
+                reply({"claims": [{"text": text, "evidence_ids": [shown.group(1)[:-1]]} for text in self._claims]})
+            )
+        return await ScriptedModelAdapter.generate(self, request)
+
+
+class MistypedIdAdapter(CitingAdapter):
+    """Cites the evidence id with one character changed in the middle (live Northwind Q8)."""
+
+    async def generate(self, request):  # type: ignore[override]
+        if "answer" in str(request.metadata.get("phase")):
+            shown = re.search(r'"evidence_id": "([0-9a-f-]{36})"', request.messages[-1].content).group(1)
+            typo = shown[:10] + ("0" if shown[10] != "0" else "1") + shown[11:]
+            self._replies.appendleft(
+                reply({"claims": [{"text": text, "evidence_ids": [typo]} for text in self._claims]})
+            )
+        return await ScriptedModelAdapter.generate(self, request)
+
+
 class ToolCallDraftTests(unittest.TestCase):
     def test_name_and_tool_are_read_as_the_tool_name(self) -> None:
         for key in ("name", "tool"):
@@ -133,6 +196,7 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
         requirements: TaskRequirements,
         goal: str,
         adapter: ScriptedModelAdapter | None = None,
+        host_plan: bool = False,
     ):
         adapter = adapter or ScriptedModelAdapter(replies)
         runtime = AgentRuntime(
@@ -141,6 +205,7 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
             evaluator=RuleBasedEvaluator(),
             run_store=AtomicJsonRunStore(Path(self._logs.name) / "logs"),
             enable_model_critique=False,
+            host_plan_search_questions=host_plan,
         )
         response = await runtime.run(
             AgentRequest(goal=goal, agent_profile_id="researcher"), self.profile, requirements=requirements
@@ -398,6 +463,12 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertNotIn("removed_unsupported_citations", str(record.metadata.get("host_actions")))
         self.assertEqual(record.evaluation.verdict.value, "failed")
+        # The correction is told exactly what was unsupported, not just "unsupported_claims".
+        correction = next(r for r in adapter.requests if r.metadata.get("phase") == "answer_correction")
+        payload = correction.messages[-1].content
+        self.assertIn('"problems_to_fix"', payload)
+        self.assertIn("document_evidence_support:", payload)
+        self.assertIn('"how_to_fix"', payload)
 
     # --- "not found" answers -------------------------------------------------------------
 
@@ -427,6 +498,113 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.WARRANTY_GOAL,
         )
         self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    # --- the host's own plan for a search-only question -------------------------------
+
+    async def test_search_only_question_skips_the_planning_call(self) -> None:
+        record, adapter = await self.run_case(
+            [reply({"answer": "Kestrel moves 40 litres per minute."})],
+            self.search_required,
+            KESTREL_GOAL,
+            host_plan=True,
+        )
+        phases = [request.metadata.get("phase") for request in adapter.requests]
+        self.assertNotIn("plan", phases)
+        self.assertEqual(phases, ["answer"])
+        self.assertEqual(self.queries(record), [KESTREL_GOAL])
+        self.assertIn({"action": "host_plan", "tool_name": SEARCH}, record.metadata["host_actions"])
+        self.assertTrue(record.plan_requirement_result.valid)
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    async def test_tasks_with_real_planning_decisions_still_get_a_model_plan(self) -> None:
+        cases = {
+            "calculation": TaskRequirements(required_capabilities=[SEARCH, CALCULATOR]),
+            "refusal": TaskRequirements(required_capabilities=[SEARCH], forbidden_capabilities=["delete_file"]),
+            "comparison": TaskRequirements(required_capabilities=[SEARCH], task_subjects=["Kestrel", "Osprey"]),
+        }
+        for name, requirements in cases.items():
+            with self.subTest(name=name):
+                record, adapter = await self.run_case(
+                    [],
+                    requirements,
+                    RIVAL_GOAL,
+                    PhaseAdapter("Kestrel moves 40 litres per minute."),
+                    host_plan=True,
+                )
+                self.assertEqual(adapter.requests[0].metadata.get("phase"), "plan")
+                self.assertNotIn("host_plan", str(record.metadata.get("host_actions")))
+
+    async def test_the_model_plans_when_the_setting_is_off(self) -> None:
+        _, adapter = await self.run_case(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}), reply({"answer": "x"})],
+            self.search_required,
+            KESTREL_GOAL,
+        )
+        self.assertEqual(adapter.requests[0].metadata.get("phase"), "plan")
+
+    # --- model output that cannot be read ------------------------------------------------
+
+    async def test_an_unreadable_answer_is_a_failed_attempt_not_a_crash(self) -> None:
+        adapter = UnreadableFirstAnswerAdapter(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}),
+                reply({"answer": "Kestrel moves 40 litres per minute."}),
+            ]
+        )
+        record, _ = await self.run_case([], TaskRequirements(required_capabilities=[SEARCH]), KESTREL_GOAL, adapter)
+        unreadable = [e for e in record.errors if e.code == "answer_output_unreadable"]
+        self.assertEqual(len(unreadable), 1)
+        self.assertEqual(unreadable[0].details["phase"], "answer")
+        self.assertEqual(record.response.answer, "Kestrel moves 40 litres per minute.")
+        correction = next(r for r in adapter.requests if r.metadata.get("phase") == "answer_correction")
+        self.assertIn("malformed or cut off", correction.messages[-1].content)
+
+    async def test_an_evidence_id_missing_a_character_is_matched(self) -> None:
+        adapter = TruncatedIdAdapter(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}})],
+            ["Kestrel moves 40 litres per minute."],
+        )
+        record, _ = await self.run_case(
+            [],
+            TaskRequirements(
+                required_capabilities=[SEARCH], requires_grounding=True, requires_citations=True, minimum_citation_count=1
+            ),
+            KESTREL_GOAL,
+            adapter,
+        )
+        self.assertEqual(record.status.value, "completed")
+        self.assertEqual(len(record.response.citations), 1)
+        self.assertIn("evidence_id_repaired", [e.code for e in record.errors])
+
+    async def test_an_evidence_id_with_a_mistyped_character_is_matched(self) -> None:
+        adapter = MistypedIdAdapter(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}})],
+            ["Kestrel moves 40 litres per minute."],
+        )
+        record, _ = await self.run_case(
+            [],
+            TaskRequirements(
+                required_capabilities=[SEARCH], requires_grounding=True, requires_citations=True, minimum_citation_count=1
+            ),
+            KESTREL_GOAL,
+            adapter,
+        )
+        self.assertEqual(len(record.response.citations), 1)
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    def test_an_invented_evidence_id_is_dropped_not_guessed(self) -> None:
+        from uuid import uuid4
+
+        from agi_agent_runtime.runtime import _reconcile_evidence_ids
+        from agi_contracts import EvidenceReference
+
+        evidence = [
+            EvidenceReference(evidence_id=uuid4(), source_id="d", source_path="d.md", excerpt="x")
+            for _ in range(3)
+        ]
+        payload, changed = _reconcile_evidence_ids({"cited_evidence_ids": [str(uuid4())]}, evidence)
+        self.assertEqual(payload["cited_evidence_ids"], [])
+        self.assertEqual(changed, 1)
 
     async def test_a_blocked_run_without_its_required_tool_cannot_pass(self) -> None:
         # Live run: no tool ran, the answer said "the evidence does not contain" it, and the

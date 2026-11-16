@@ -120,6 +120,8 @@ def validate_response_requirements(
     if not no_unsupported_claims:
         missing.append("unsupported_claims")
         messages.append("The existing evaluator detected unsupported claims")
+        # The specifics ("missing cited entities: rubin"), so a correction knows what to fix.
+        messages.extend(" ".join(str(claim).split())[:300] for claim in unsupported_claims[:5])
     valid = not missing
     return ResponseRequirementResult(
         valid=valid,

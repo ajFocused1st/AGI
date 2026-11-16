@@ -17,6 +17,7 @@ from .file_reader import (
     ReadOnlyFileReaderOutput,
 )
 from .registry import DecisionRecorder, ToolRegistry
+from .semantic import EmbeddingUnavailableError, OllamaPassageEmbedder
 
 __all__ = [
     "BaseTool",
@@ -24,8 +25,10 @@ __all__ = [
     "CalculatorInput",
     "CalculatorOutput",
     "DecisionRecorder",
+    "EmbeddingUnavailableError",
     "FileSearchMatch",
     "FileSearchOutput",
+    "OllamaPassageEmbedder",
     "ReadOnlyFileSearch",
     "ReadOnlyFileSearchConfig",
     "ReadOnlyFileSearchInput",

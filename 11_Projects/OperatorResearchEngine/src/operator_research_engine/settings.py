@@ -24,6 +24,23 @@ class OllamaSettings(BaseModel):
     context_tokens: int | None = Field(default=8192, ge=512, le=131_072)
 
 
+class RetrievalSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # An installed Ollama embedding model (e.g. nomic-embed-text) adds meaning-based
+    # ranking to document search, so reworded questions still find their passage.
+    # None keeps keyword-only search. Models are never pulled automatically.
+    embedding_model: str | None = None
+
+
+class PlanningSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # True: a question needing only a document search skips the model's planning call
+    # (the host plans "search the question, then answer"), saving one model call.
+    host_plan_search_questions: bool = False
+
+
 class RunPodSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -49,6 +66,8 @@ class ProjectSettings(BaseModel):
     reasoning_tier: ReasoningTier = ReasoningTier.STANDARD
     ollama: OllamaSettings
     runpod: RunPodSettings = Field(default_factory=RunPodSettings)
+    retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
+    planning: PlanningSettings = Field(default_factory=PlanningSettings)
 
     @field_validator("model_provider")
     @classmethod

@@ -523,7 +523,13 @@ class AgentRuntimeTests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertTrue(record.response_requirement_result.valid)
             self.assertGreaterEqual(len(record.response.citations), 1)
-            self.assertEqual(record.evaluation.verdict.value, "passed")
+            # Cited passages shown in place of an answer are labelled as such and graded
+            # partial: nothing answered the question (real run: an Einstein question got an
+            # unrelated textbook passage marked "passed").
+            self.assertTrue(record.response.answer.startswith("An answer could not be verified"))
+            self.assertEqual(record.evaluation.verdict.value, "partial")
+            check = next(c for c in record.evaluation.rule_based_checks if c.name == "model_answer_verified")
+            self.assertFalse(check.passed)
 
     async def test_fallback_prefers_non_heading_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -17,6 +18,8 @@ from agi_ollama import OllamaAdapter, OllamaConfig
 from agi_runpod import RunPodAdapter, RunPodConfig
 from agi_tools import (
     Calculator,
+    EmbeddingUnavailableError,
+    OllamaPassageEmbedder,
     ReadOnlyFileReader,
     ReadOnlyFileReaderConfig,
     ReadOnlyFileSearch,
@@ -79,13 +82,19 @@ def build_engine(settings: ProjectSettings) -> OperatorResearchEngine:
         SearchRoot(label=f"documents{index}", path=path)
         for index, path in enumerate(settings.document_roots, start=1)
     )
-    registry.register(
-        ReadOnlyFileSearch(
-            ReadOnlyFileSearchConfig(
-                roots=document_roots
-            )
-        )
+    search = ReadOnlyFileSearch(
+        ReadOnlyFileSearchConfig(roots=document_roots),
+        embedder=_embedder(settings),
     )
+    try:
+        # Embeds new or changed passages now (cached on disk), not inside a timed search.
+        search.warm_up()
+    except EmbeddingUnavailableError as exc:
+        raise ValueError(
+            f"retrieval.embedding_model {settings.retrieval.embedding_model!r} cannot be used ({exc}). "
+            "Install it with `ollama pull <model>` or remove retrieval.embedding_model from the config."
+        ) from exc
+    registry.register(search)
     registry.register(
         ReadOnlyFileReader(
             ReadOnlyFileReaderConfig(
@@ -103,6 +112,7 @@ def build_engine(settings: ProjectSettings) -> OperatorResearchEngine:
         ),
         enable_model_critique=routing_policy.allow_critique,
         routing_policy=settings.reasoning_tier,
+        host_plan_search_questions=settings.planning.host_plan_search_questions,
     )
     run_host_precheck(
         policy=routing_policy,
@@ -110,6 +120,18 @@ def build_engine(settings: ProjectSettings) -> OperatorResearchEngine:
         tools=registry.tools,
     )
     return OperatorResearchEngine(runtime=runtime, profile=profile)
+
+
+def _embedder(settings: ProjectSettings) -> OllamaPassageEmbedder | None:
+    model = (settings.retrieval.embedding_model or "").strip()
+    if not model:
+        return None
+    safe_name = re.sub(r"[^A-Za-z0-9._-]+", "_", model)
+    return OllamaPassageEmbedder(
+        base_url=settings.ollama.base_url,
+        model=model,
+        cache_path=settings.runtime_root / "cache" / f"embeddings-{safe_name}.json",
+    )
 
 
 def _load_profile(path: Path) -> AgentProfile:

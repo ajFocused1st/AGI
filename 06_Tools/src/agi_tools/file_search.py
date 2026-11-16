@@ -11,8 +11,9 @@ import re
 import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from collections.abc import Callable
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal
 
 from agi_contracts import RiskLevel
 from pydantic import (
@@ -24,6 +25,7 @@ from pydantic import (
 )
 
 from .base import BaseTool, ToolInputError
+from .semantic import EmbeddingUnavailableError, OllamaPassageEmbedder
 
 
 DEFAULT_ALLOWED_EXTENSIONS = frozenset({".csv", ".json", ".md", ".rst", ".txt", ".yaml", ".yml"})
@@ -175,6 +177,8 @@ class FileSearchOutput(BaseModel):
     scanned_files: int = Field(ge=0)
     skipped_entries: int = Field(ge=0)
     truncated: bool
+    # "keyword+meaning" when an embedding model also ranked the passages.
+    ranking: Literal["keyword", "keyword+meaning"] = "keyword"
 
 
 @dataclass(frozen=True, slots=True)
@@ -198,16 +202,85 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
     input_model = ReadOnlyFileSearchInput
     output_model = FileSearchOutput
 
-    def __init__(self, config: ReadOnlyFileSearchConfig) -> None:
+    def __init__(
+        self,
+        config: ReadOnlyFileSearchConfig,
+        embedder: OllamaPassageEmbedder | None = None,
+    ) -> None:
         self.config = config
         self._roots = self._prepare_roots(config.roots)
+        self._embedder = embedder
 
     async def run(self, tool_input: ReadOnlyFileSearchInput) -> FileSearchOutput:
         return await asyncio.to_thread(self._search_sync, tool_input)
 
+    def warm_up(self) -> int:
+        """Embed every passage not yet cached, so searches only embed their query.
+
+        Raises EmbeddingUnavailableError when the embedding model cannot be used.
+        Returns how many passages were newly embedded (0 without an embedder).
+        """
+
+        if self._embedder is None:
+            return 0
+        documents, *_ = self._scan(perf_counter() + 3600)
+        texts = [u.text for u in _units(documents, self.config.passage_chars) if not u.is_heading]
+        return self._embedder.ensure(texts)
+
     def _search_sync(self, tool_input: ReadOnlyFileSearchInput) -> FileSearchOutput:
         deadline = perf_counter() + self.timeout_seconds
         effective_limit = min(tool_input.max_matches, self.config.max_matches)
+        documents, scanned_files, skipped_entries, truncated = self._scan(deadline)
+        meaning_used = False
+
+        def meaning(passages: list[_Unit]) -> list[float | None] | None:
+            nonlocal meaning_used
+            assert self._embedder is not None
+            try:
+                # Leave a second for ranking; passages not embedded by then rank by keyword only.
+                scores = self._embedder.similarities(
+                    tool_input.query, [unit.text for unit in passages], deadline=deadline - 1.0
+                )
+            except EmbeddingUnavailableError:
+                return None  # the keyword ranking still answers
+            meaning_used = True
+            return scores
+
+        ranked, more_available = _rank_units(
+            documents,
+            tool_input.query,
+            limit=effective_limit,
+            case_sensitive=self.config.case_sensitive,
+            passage_chars=self.config.passage_chars,
+            max_result_chars=self.config.max_result_chars,
+            meaning=meaning if self._embedder is not None else None,
+        )
+        matches = [
+            FileSearchMatch(
+                source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
+                root_label=unit.document.root_label,
+                relative_path=unit.document.relative_path,
+                content_sha256=unit.document.content_sha256,
+                line_start=unit.line_start,
+                line_end=unit.line_end,
+                line_number=unit.line_start,
+                snippet=unit.text,
+                document_title=unit.heading_text,
+            )
+            for unit in ranked
+        ]
+        return FileSearchOutput(
+            query=tool_input.query,
+            matches=matches,
+            scanned_files=scanned_files,
+            skipped_entries=skipped_entries,
+            truncated=truncated or more_available,
+            ranking="keyword+meaning" if meaning_used else "keyword",
+        )
+
+    def _scan(self, deadline: float) -> tuple[list[_ScannedDocument], int, int, bool]:
+        """Every safe, allowed document under the roots, read within the limits."""
+
         documents: list[_ScannedDocument] = []
         scanned_files = 0
         skipped_entries = 0
@@ -302,35 +375,7 @@ class ReadOnlyFileSearch(BaseTool[ReadOnlyFileSearchInput, FileSearchOutput]):
             if truncated:
                 break
 
-        ranked, more_available = _rank_units(
-            documents,
-            tool_input.query,
-            limit=effective_limit,
-            case_sensitive=self.config.case_sensitive,
-            passage_chars=self.config.passage_chars,
-            max_result_chars=self.config.max_result_chars,
-        )
-        matches = [
-            FileSearchMatch(
-                source_id=f"{unit.document.root_label}:{unit.document.relative_path}",
-                root_label=unit.document.root_label,
-                relative_path=unit.document.relative_path,
-                content_sha256=unit.document.content_sha256,
-                line_start=unit.line_start,
-                line_end=unit.line_end,
-                line_number=unit.line_start,
-                snippet=unit.text,
-                document_title=unit.heading_text,
-            )
-            for unit in ranked
-        ]
-        return FileSearchOutput(
-            query=tool_input.query,
-            matches=matches,
-            scanned_files=scanned_files,
-            skipped_entries=skipped_entries,
-            truncated=truncated or more_available,
-        )
+        return documents, scanned_files, skipped_entries, truncated
 
     def _prepare_roots(self, roots: tuple[SearchRoot, ...]) -> tuple[_PreparedRoot, ...]:
         prepared: list[_PreparedRoot] = []
@@ -558,6 +603,9 @@ def _query_profile(query: str) -> tuple[list[str], bool, bool]:
     return list(dict.fromkeys(terms)), summary_intent, compare_intent
 
 
+MeaningScorer = Callable[[list[_Unit]], "list[float | None] | None"]
+
+
 def _rank_units(
     documents: list[_ScannedDocument],
     query: str,
@@ -566,21 +614,78 @@ def _rank_units(
     case_sensitive: bool,
     passage_chars: int,
     max_result_chars: int,
+    meaning: MeaningScorer | None = None,
 ) -> tuple[list[_Unit], bool]:
-    """The best-matching passages, ordered by BM25 with heading and file-name context.
+    """Keyword ranking, interleaved with meaning ranking when a scorer is available.
+
+    Keyword (BM25) ranking finds the passages that use the question's words; meaning
+    ranking finds those that say the same thing in other words. Alternating the two
+    lists (best keyword match, best meaning match, next keyword match, ...) kept every
+    original question's answer in the top three and found reworded questions' answers
+    that keywords missed. When no passage shares a word with the question, the meaning
+    matches are used alone. Comparison and overview requests keep their keyword logic.
+    """
+
+    units = _units(documents, passage_chars)
+    keyword, mode = _keyword_order(units, query, case_sensitive)
+    if meaning is None or mode in {"compare", "overview"}:
+        return _bounded(keyword, limit, max_result_chars)
+    by_meaning = _meaning_order(units, meaning)
+    if not by_meaning:
+        return _bounded(keyword, limit, max_result_chars)
+    if mode == "none":
+        return _bounded(by_meaning, limit, max_result_chars)
+    return _bounded(_interleave(keyword, by_meaning), limit, max_result_chars)
+
+
+# Meaning matches kept: at most this many, within this similarity of the best one.
+_MEANING_CANDIDATES = 10
+_MEANING_MARGIN = 0.15
+
+
+def _meaning_order(units: list[_Unit], meaning: MeaningScorer) -> list[_Unit]:
+    passages = [unit for unit in units if not unit.is_heading]
+    scores = meaning(passages) if passages else None
+    if not scores:
+        return []
+    scored = [(score, index) for index, score in enumerate(scores) if score is not None]
+    if not scored:
+        return []
+    scored.sort(key=lambda pair: (-pair[0], pair[1]))
+    best = scored[0][0]
+    return [
+        passages[index] for score, index in scored[:_MEANING_CANDIDATES] if score >= best - _MEANING_MARGIN
+    ]
+
+
+def _interleave(first: list[_Unit], second: list[_Unit]) -> list[_Unit]:
+    merged: list[_Unit] = []
+    seen: set[int] = set()
+    for position in range(max(len(first), len(second))):
+        for ordered in (first, second):
+            if position < len(ordered) and id(ordered[position]) not in seen:
+                seen.add(id(ordered[position]))
+                merged.append(ordered[position])
+    return merged
+
+
+def _keyword_order(units: list[_Unit], query: str, case_sensitive: bool) -> tuple[list[_Unit], str]:
+    """Passages ordered by BM25 with heading and file-name context, and how they were chosen.
 
     Documents are searched as passages (see ``_passages``), so a match brings the
     sentences around it: the rest of a wrapped sentence, the answer under a question,
     the name under a quotation. A passage also matches on its document context (nearest
     markdown heading and file name), so "The trial completed in 3 hours." under
-    "# Project Beacon" still answers a Beacon query. Results stop at ``limit`` units or
-    ``max_result_chars`` characters, whichever comes first.
+    "# Project Beacon" still answers a Beacon query.
+
+    Modes: "ranked" (normal), "compare" (both sides of a comparison), "overview" (no
+    content words, or an overview request matching nothing: the documents' openings),
+    and "none" (a fact question no passage shares a word with).
     """
 
-    units = _units(documents, passage_chars)
     terms, summary_intent, compare_intent = _query_profile(query)
     if not terms:
-        return _bounded(units, limit, max_result_chars)
+        return units, "overview"
     term_set = set(terms)
     document_frequency = {
         term: sum(1 for unit in units if term in unit.context_terms or term in unit.terms)
@@ -610,15 +715,15 @@ def _rank_units(
     matching = [unit for unit in units if unit.coverage]
     if not matching:
         # Nothing matches: an overview request gets the documents' openings; a fact question gets none.
-        return _bounded(units, limit, max_result_chars) if summary_intent else ([], False)
+        return (units, "overview") if summary_intent else ([], "none")
     if compare_intent:
         compared = _comparison_units(units, term_set)
         if compared:
-            return _bounded(compared, limit, max_result_chars)
+            return compared, "compare"
     # Headings are navigation, not facts: rank them after every passage.
     matching.sort(key=lambda unit: (unit.is_heading, -unit.score))  # stable: ties keep document order
     floor = matching[0].score * _MIN_RELATIVE_SCORE
-    return _bounded([unit for unit in matching if unit.score >= floor], limit, max_result_chars)
+    return [unit for unit in matching if unit.score >= floor], "ranked"
 
 
 def _bounded(units: list[_Unit], limit: int, max_chars: int) -> tuple[list[_Unit], bool]:

@@ -13,6 +13,8 @@ from time import perf_counter
 from typing import Any
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError as PydanticValidationError
+
 from agi_contracts import (
     AgentProfile,
     AgentRequest,
@@ -73,6 +75,12 @@ _FOLLOW_UP_ROUNDS = {
     ReasoningTier.DEEP: 2,
     ReasoningTier.MAX: 3,
 }
+# Placed before passages the host shows when no model answer passed its checks. The
+# wording is an uncertainty statement, so the grader does not treat it as a claim.
+FALLBACK_NOTE = (
+    "An answer could not be verified, so here are the retrieved passages that best "
+    "match the question:"
+)
 # Capabilities whose inputs come from retrieved evidence, so they can wait for a
 # follow-up round instead of having to appear in the first plan.
 _EVIDENCE_DEPENDENT_CAPABILITIES = frozenset({"calculator"})
@@ -127,7 +135,13 @@ class _RunState:
     dispatch_blocked: bool = False
 
     def add_model_call(self, usage: ModelUsage, telemetry: dict[str, Any] | None) -> None:
-        self.usage_parts.append(usage)
+        # A step with no model call (host plan, unreadable output) has no usage to add; an
+        # all-empty entry would turn the run's known token total into "unknown".
+        if any(
+            value is not None
+            for value in (usage.input_tokens, usage.output_tokens, usage.total_tokens, usage.estimated_cost)
+        ):
+            self.usage_parts.append(usage)
         if telemetry is not None:
             self.model_telemetry.append(telemetry)
 
@@ -154,12 +168,16 @@ class AgentRuntime:
         run_store: AtomicJsonRunStore,
         enable_model_critique: bool = True,
         routing_policy: RoutingPolicy | ReasoningTier | str | None = None,
+        host_plan_search_questions: bool = False,
     ) -> None:
         self._model = model_adapter
         self._tools = tool_executor
         self._evaluator = evaluator
         self._store = run_store
         self._enable_model_critique = enable_model_critique
+        # When True, a question that needs only a document search skips the model's
+        # planning call: the host plans "search the question, then answer" itself.
+        self._host_plan_search_questions = host_plan_search_questions
         self._routing_policy = (
             routing_policy
             if isinstance(routing_policy, RoutingPolicy)
@@ -237,7 +255,15 @@ class AgentRuntime:
         """Plan (or host plan for tool-free tiers), validate, correct once, record denials."""
 
         requirements = state.requirements
-        if self._routing_policy.allow_tools:
+        host_plan = self._host_search_plan(state)
+        if host_plan is not None:
+            # A search-only question: the model's plan would only be "search for it", so the
+            # host writes that plan and saves a model call. Follow-up rounds still let the
+            # model ask for more searches when the evidence falls short.
+            state.plan, state.tool_call_drafts = host_plan
+            usage, telemetry = ModelUsage(), None
+            state.host_actions.append({"action": "host_plan", "tool_name": HOST_RETRIEVAL_TOOL})
+        elif self._routing_policy.allow_tools:
             state.plan, state.tool_call_drafts, usage, telemetry = await self._create_plan(
                 state.run_id,
                 state.request,
@@ -325,6 +351,39 @@ class AgentRuntime:
         state.extend_tool_trace(
             *self._policy_denials(set(requirements.forbidden_capabilities) - recorded_denials)
         )
+
+    def _host_search_plan(self, state: _RunState) -> tuple[TaskPlan, list[ToolCallDraft]] | None:
+        """The host's own plan for a question that needs exactly one thing: a search.
+
+        Only when enabled, and only when the requirements ask for the document search and
+        nothing else (no calculator, no forbidden action to refuse, no named subjects to
+        cover), so every task whose plan carries real decisions still gets a model plan.
+        """
+
+        requirements = state.requirements
+        query = " ".join(state.request.goal.split())[:200].strip()
+        if (
+            not self._host_plan_search_questions
+            or not self._routing_policy.allow_tools
+            or not self._routing_policy.allow_retrieval
+            or requirements.required_capabilities != [HOST_RETRIEVAL_TOOL]
+            or requirements.forbidden_capabilities
+            or requirements.task_subjects
+            or requirements.maximum_tool_calls == 0
+            or HOST_RETRIEVAL_TOOL not in self._allowed_capabilities(state)
+            or not query
+        ):
+            return None
+        plan = TaskPlan(
+            goal=state.request.goal,
+            steps=[
+                TaskStep(description="Search the approved documents with the question as asked"),
+                TaskStep(description="Answer from the passages found, citing them"),
+            ],
+        )
+        return plan, [
+            ToolCallDraft(tool_name=HOST_RETRIEVAL_TOOL, arguments={"query": query}, purpose="host_plan")
+        ]
 
     def _host_required_retrieval(
         self, state: _RunState, result: PlanRequirementResult
@@ -643,9 +702,9 @@ class AgentRuntime:
     async def _answer_stage(self, state: _RunState) -> None:
         """Model answer, one bounded correction, then the labelled host fallback if eligible."""
 
-        draft, usage, telemetry = await self._model_answer(state)
+        draft, usage, telemetry = await self._readable_model_answer(state)
         state.add_model_call(usage, telemetry)
-        result = self._apply_answer(state, draft, AnswerSource.MODEL)
+        result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
         state.response_requirement_results.append(result)
         if (
             state.requirements.requires_grounding
@@ -658,18 +717,20 @@ class AgentRuntime:
                 state.answer_text.split()
             )[:240]
             if await self._follow_up_round(state, [gap]) and self._calls_left(state) >= 1:
-                draft, usage, telemetry = await self._model_answer(state, phase="answer_followup")
+                draft, usage, telemetry = await self._readable_model_answer(
+                    state, phase="answer_followup"
+                )
                 state.add_model_call(usage, telemetry)
-                result = self._apply_answer(state, draft, AnswerSource.MODEL)
+                result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
                 state.response_requirement_results[-1] = result
         if (
             not result.valid
             and self._routing_policy.allow_revision
             and self._calls_left(state) >= 1
         ):
-            draft, usage, telemetry = await self._model_answer(state, correction=result)
+            draft, usage, telemetry = await self._readable_model_answer(state, correction=result)
             state.add_model_call(usage, telemetry)
-            result = self._apply_answer(
+            result = self._apply_readable_answer(
                 state, draft, AnswerSource.MODEL_CORRECTION, correction_attempted=True
             )
             state.response_requirement_results.append(result)
@@ -708,6 +769,63 @@ class AgentRuntime:
                 )
             )
 
+    async def _readable_model_answer(
+        self,
+        state: _RunState,
+        *,
+        correction: ResponseRequirementResult | None = None,
+        phase: str | None = None,
+    ) -> tuple[AnswerDraft | None, ModelUsage, dict[str, Any] | None]:
+        """A model answer, or None when the model's output could not be read.
+
+        A small model sometimes returns malformed JSON or runs out of output budget mid-
+        answer. That is one failed attempt, recorded as an error; the repair attempt and
+        the host fallback still run instead of the whole run crashing.
+        """
+
+        try:
+            return await self._model_answer(state, correction=correction, phase=phase)
+        except Exception as exc:
+            if not _is_unreadable_model_output(exc):
+                raise
+            state.errors.append(
+                ErrorDetail(
+                    code="answer_output_unreadable",
+                    message="The model's answer was malformed or cut off and was discarded.",
+                    component="agent_runtime",
+                    details={
+                        "phase": phase or ("answer_correction" if correction else "answer"),
+                        "error_type": type(exc).__name__,
+                    },
+                )
+            )
+            return None, ModelUsage(), None
+
+    def _apply_readable_answer(
+        self,
+        state: _RunState,
+        draft: AnswerDraft | None,
+        source: AnswerSource,
+        *,
+        correction_attempted: bool = False,
+    ) -> ResponseRequirementResult:
+        if draft is not None:
+            return self._apply_answer(state, draft, source, correction_attempted=correction_attempted)
+        result = self._apply_answer(
+            state, AnswerDraft(), source, correction_attempted=correction_attempted
+        )
+        return result.model_copy(
+            update={
+                "valid": False,
+                "correction_succeeded": False,
+                "missing_requirements": [*result.missing_requirements, "readable_answer"],
+                "validation_messages": [
+                    *result.validation_messages,
+                    "The previous answer was malformed or cut off: return one short, complete JSON object.",
+                ],
+            }
+        )
+
     async def _model_answer(
         self,
         state: _RunState,
@@ -716,7 +834,8 @@ class AgentRuntime:
         phase: str | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         assert state.plan is not None
-        return await self._create_answer(
+        repairs: list[int] = []
+        answer = await self._create_answer(
             run_id=state.run_id,
             request=state.request,
             profile=state.profile,
@@ -727,7 +846,19 @@ class AgentRuntime:
             correction=correction,
             governor=state.governor,
             phase=phase,
+            citation_repairs=repairs,
         )
+        if repairs:
+            state.errors.append(
+                ErrorDetail(
+                    code="evidence_id_repaired",
+                    message="The answer cited evidence ids that did not match exactly; they were "
+                    "matched to a unique evidence id or removed.",
+                    component="agent_runtime",
+                    details={"count": sum(repairs)},
+                )
+            )
+        return answer
 
     def _apply_answer(
         self,
@@ -745,6 +876,9 @@ class AgentRuntime:
         state.answer_text = self._augment_answer(
             self._render_answer_draft(draft, state.evidence), state.tool_results
         )
+        if source == AnswerSource.HOST_FALLBACK and draft.uncertainty is None:
+            # Retrieved passages, not an answer: say so, so nobody reads them as one.
+            state.answer_text = f"{FALLBACK_NOTE}\n\n{state.answer_text}"
         requested_ids = list(draft.cited_evidence_ids)
         requested_ids.extend(
             evidence_id for claim in draft.claims for evidence_id in claim.evidence_ids
@@ -870,6 +1004,28 @@ class AgentRuntime:
         ]
         if state.dispatch_blocked and never_ran:
             evaluation = evaluation.model_copy(update={"verdict": EvaluationVerdict.FAILED})
+        if (
+            state.answer_source == AnswerSource.HOST_FALLBACK
+            and state.answer_text.startswith(FALLBACK_NOTE)
+            and evaluation.verdict == EvaluationVerdict.PASSED
+        ):
+            # Passages shown in place of an answer: the citations check out, but nothing
+            # answered the question, so it cannot count as a pass.
+            evaluation = evaluation.model_copy(
+                update={
+                    "verdict": EvaluationVerdict.PARTIAL,
+                    "rule_based_checks": [
+                        *evaluation.rule_based_checks,
+                        RuleBasedCheck(
+                            name="model_answer_verified",
+                            passed=False,
+                            score=0.0,
+                            weight=0.0,
+                            details="No model answer passed its checks; retrieved passages were shown instead.",
+                        ),
+                    ],
+                }
+            )
         # "The evidence does not contain it" cannot be confirmed by a search that may have
         # missed the passage. For a question answered from the documents, unless the task
         # expected missing information or a retrieved passage says so itself, such an
@@ -1420,6 +1576,7 @@ class AgentRuntime:
         correction: ResponseRequirementResult | None = None,
         governor: BudgetGovernor,
         phase: str | None = None,
+        citation_repairs: list[int] | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         phase = phase or ("answer_correction" if correction is not None else "answer")
         model_request = ModelRequest(
@@ -1455,6 +1612,18 @@ class AgentRuntime:
                                 if correction is not None
                                 else []
                             ),
+                            **(
+                                {
+                                    "problems_to_fix": correction.validation_messages,
+                                    "how_to_fix": (
+                                        "Remove every name, number, or term listed as unsupported, "
+                                        "or replace it with wording found in the evidence. Do not "
+                                        "add facts from outside the evidence."
+                                    ),
+                                }
+                                if correction is not None and correction.validation_messages
+                                else {}
+                            ),
                         },
                         ensure_ascii=False,
                     ),
@@ -1477,8 +1646,11 @@ class AgentRuntime:
             raise ValueError("model response request_id mismatch")
         if model_response.structured_output is None:
             raise ValueError("answer model did not return structured output")
+        payload, repaired_ids = _reconcile_evidence_ids(model_response.structured_output, evidence)
+        if repaired_ids and citation_repairs is not None:
+            citation_repairs.append(repaired_ids)
         return (
-            AnswerDraft.model_validate(model_response.structured_output),
+            AnswerDraft.model_validate(payload),
             model_response.usage,
             _model_telemetry(
                 phase, model_response.raw_metadata,
@@ -1950,6 +2122,7 @@ def _can_use_fallback_response(result: ResponseRequirementResult) -> bool:
         "citations",
         "grounding_evidence",
         "uncertainty_statement",
+        "readable_answer",
     }
     return bool(result.missing_requirements) and set(result.missing_requirements).issubset(
         fallback_requirements
@@ -2074,6 +2247,86 @@ def _model_telemetry(phase: str, raw_metadata: dict[str, Any]) -> dict[str, Any]
             if isinstance(key, str) and isinstance(value, str)
         }
     return telemetry
+
+
+def _is_unreadable_model_output(exc: BaseException) -> bool:
+    """Malformed, cut-off, or schema-breaking model output (any provider), not an outage.
+
+    Adapters stay provider-specific, so their output errors are recognised by the shared
+    naming convention (OllamaResponseValidationError, RunPodResponseValidationError);
+    a pydantic ValidationError is the draft itself failing its contract.
+    """
+
+    # ...ProtocolError covers "incomplete response" (output stopped before it was done).
+    return isinstance(exc, PydanticValidationError) or type(exc).__name__.endswith(
+        ("ResponseValidationError", "ProtocolError")
+    )
+
+
+_UUID_TEXT = re.compile(r"^[0-9a-fA-F-]{8,36}$")
+# Two random 36-character ids differ in about 30 places, so 3 edits cannot reach a wrong one.
+_ID_TYPO_LIMIT = 3
+
+
+def _edit_distance(first: str, second: str) -> int:
+    previous = list(range(len(second) + 1))
+    for row, left in enumerate(first, start=1):
+        current = [row]
+        for column, right in enumerate(second, start=1):
+            current.append(
+                min(previous[column] + 1, current[column - 1] + 1, previous[column - 1] + (left != right))
+            )
+        previous = current
+    return previous[-1]
+
+
+def _reconcile_evidence_ids(payload: Any, evidence: list[EvidenceReference]) -> tuple[Any, int]:
+    """Repair evidence ids the model copied incompletely; drop the ones it invented.
+
+    A small model sometimes drops a character from a 36-character id. When exactly one
+    evidence id starts with what it wrote, that is the one it meant. Anything else is
+    removed (and counted) so a bad citation cannot crash the run.
+    """
+
+    known = [str(item.evidence_id) for item in evidence]
+    changed = 0
+
+    def fix(values: Any) -> Any:
+        nonlocal changed
+        if not isinstance(values, list):
+            return values
+        kept: list[Any] = []
+        for value in values:
+            text = str(value).strip().casefold()
+            if text in known:
+                kept.append(text)
+                continue
+            matches = [item for item in known if _UUID_TEXT.match(text) and item.startswith(text)]
+            if not matches and _UUID_TEXT.match(text):
+                # A mistyped character or two: random ids are never this close to each other.
+                distances = sorted((_edit_distance(text, item), item) for item in known)
+                if distances and distances[0][0] <= _ID_TYPO_LIMIT and (
+                    len(distances) == 1 or distances[1][0] > distances[0][0]
+                ):
+                    matches = [distances[0][1]]
+            changed += 1
+            if len(matches) == 1:
+                kept.append(matches[0])
+        return kept
+
+    if not isinstance(payload, dict):
+        return payload, 0
+    repaired = dict(payload)
+    if "cited_evidence_ids" in repaired:
+        repaired["cited_evidence_ids"] = fix(repaired["cited_evidence_ids"])
+    if isinstance(repaired.get("claims"), list):
+        repaired["claims"] = [
+            {**claim, "evidence_ids": fix(claim.get("evidence_ids"))}
+            if isinstance(claim, dict) and "evidence_ids" in claim
+            else claim
+            for claim in repaired["claims"]
+        ]
+    return repaired, changed
 
 
 def _verification_failures(evaluation: Any) -> list[str]:
