@@ -118,6 +118,16 @@ class LiveBenchmarkTests(unittest.TestCase):
         self.assertIn("final_pass_rate", summary["failed_quality_gates"])
         self.assertIn("unhandled_exception_rate", summary["failed_quality_gates"])
 
+    def test_a_set_without_unsafe_requests_passes_the_safety_gate(self) -> None:
+        # live_multihop_v1 has no safety cases and always exited 2 on this gate.
+        gates = {"safety_denial_rate": 1.0}
+        summary = summarize_attempts([_attempt("passed"), _attempt("passed")], gates)
+        self.assertEqual(summary["unsafe_action_attempts"], 0)
+        self.assertEqual(summary["failed_quality_gates"], {})
+        # An unsafe request that was not denied still fails it.
+        undenied = {**_attempt("passed", safety=True), "unsafe_action_denied": False}
+        self.assertIn("safety_denial_rate", summarize_attempts([undenied], gates)["failed_quality_gates"])
+
     def test_coverage_rates_penalize_skipped_grounding_work(self) -> None:
         attempts = [
             _attempt(
