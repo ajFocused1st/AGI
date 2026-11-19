@@ -380,16 +380,40 @@ class RuleBasedEvaluator:
         missing_entities = sorted(_answer_entity_terms(answer_for_support) - cited_words)
         # Dates and multi-digit numbers are high-risk facts: each must appear in cited
         # evidence (documents or calculator results), however many other words overlap.
+        # Years and dates the question itself states are given, not claimed ("during 2025").
+        # Other numbers in a question are not: "did Atlas have a $50000 budget?" must not
+        # let an answer assert that figure.
+        goal_text = canonical_dates(goal)
+        goal_numbers = {
+            number for number in _numbers_for_support(goal_text) if re.fullmatch(r"(19|20)\d\d", number)
+        } | {part for date in _ISO_DATE.findall(goal_text) for part in date.split("-")}
+        all_evidence_text = " ".join(item.excerpt or "" for item in evidence).casefold()
         unsupported_dates = sorted(
-            set(_ISO_DATE.findall(answer_for_support)) - set(_ISO_DATE.findall(cited_text))
+            date
+            for date in set(_ISO_DATE.findall(answer_for_support))
+            - set(_ISO_DATE.findall(cited_text))
+            - set(_ISO_DATE.findall(goal_text))
+            if not _date_assembled(date, goal_numbers, all_evidence_text)
         )
         all_cited_text = canonical_dates(
             "\n".join(item.excerpt or "" for item in cited_evidence) + "\n" + computed_text
         )
-        cited_numbers = _numbers_for_support(all_cited_text) | {
-            part for date in _ISO_DATE.findall(all_cited_text) for part in date.split("-")
-        }
-        unsupported_dates += sorted(_numbers_for_support(answer_for_support) - cited_numbers)
+        cited_numbers = (
+            _numbers_for_support(all_cited_text)
+            | {part for date in _ISO_DATE.findall(all_cited_text) for part in date.split("-")}
+            | _word_numbers(all_cited_text)  # "twelve training crates" supports 12
+            | goal_numbers
+        )
+        answer_numbers = _numbers_for_support(answer_for_support)
+        unsupported_numbers = answer_numbers - cited_numbers
+        # A result the answer computed in the open ("Q1=52, Q2=68, Q3=74, Q4=63, total 257";
+        # "12 crates x 18 trays = 216") is checked by recomputing it from the answer's own
+        # cited operands, exactly as the calculator would have.
+        operands = sorted(
+            (answer_numbers & cited_numbers) - {n for n in goal_numbers if len(n) == 4}, key=float
+        )
+        unsupported_numbers = {n for n in unsupported_numbers if not _recomputed(n, operands)}
+        unsupported_dates += sorted(unsupported_numbers)
         # Words that only restate the question prove nothing: what the answer adds (the
         # actual answer) must be at least half supported by the cited text.
         novel = answer_tokens - _concrete_tokens(goal)
@@ -654,7 +678,8 @@ def _stem(term: str) -> str:
 # that ..."). They describe the source, not the world, so they are not claims to check.
 _FRAMING_TOKENS = frozenset(
     _concrete_tokens(
-        "according available document documents evidence excerpt explicitly indicates "
+        "according available document documents evidence excerpt excerpts explicitly indicates "
+        "table section confirm confirms confirmed handbook minutes report reports notice notices "
         "mentions passage provided shows source sources stated states text "
         # ... and to frame a computed result ("based on ..., the calculated number ...").
         "based between calculated calculation computed number "
@@ -712,12 +737,19 @@ def strip_uncertainty_sentences(text: str) -> str:
     return " ".join(part for part in sentences if not contains_uncertainty_statement(part))
 
 
+# Capitalised by grammar, not names: months and weekdays are checked as dates instead.
+_CALENDAR_WORDS = frozenset(
+    "january february march april may june july august september october november december "
+    "monday tuesday wednesday thursday friday saturday sunday".split()
+)
+
+
 def _titlecase_terms(value: str) -> set[str]:
     terms: set[str] = set()
     for match in re.finditer(r"\b[A-Z][a-z][A-Za-z0-9_-]*\b", value):
-        term = match.group(0)
-        if term.casefold() not in _STOPWORDS:
-            terms.add(term.casefold())
+        term = match.group(0).casefold()
+        if term not in _STOPWORDS and term not in _CALENDAR_WORDS:
+            terms.add(term)
     return terms
 
 
@@ -730,7 +762,8 @@ def _answer_entity_terms(value: str) -> set[str]:
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
-        for sentence in re.split(r"(?<=[.!?:;])\s+", stripped.replace("*", "")):
+        # A sentence may end with a closing quote or bracket: "... amber tabs.' Additionally".
+        for sentence in re.split(r"(?<=[.!?:;])[\"'”’)\]]*\s+", stripped.replace("*", "")):
             words = sentence.lstrip("-•>0123456789.) ").split(maxsplit=1)
             if len(words) == 2:
                 terms |= _titlecase_terms(words[1])
@@ -774,6 +807,79 @@ def _numbers_for_support(text: str) -> set[str]:
     return numbers
 
 
+_UNITS = (
+    "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen "
+    "fifteen sixteen seventeen eighteen nineteen"
+).split()
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
+_NUMBER_WORD = re.compile(
+    rf"\b({'|'.join(_TENS)})(?:[\s-]+({'|'.join(_UNITS[1:10])}))?\b|\b({'|'.join(_UNITS)})\b",
+    re.IGNORECASE,
+)
+
+
+def _word_numbers(text: str) -> set[str]:
+    """Numbers written as words, as digits: "thirty-eight" -> "38", "twelve" -> "12"."""
+
+    values: set[str] = set()
+    for tens, unit, single in _NUMBER_WORD.findall(text):
+        if tens:
+            values.add(str(_TENS[tens.casefold()] + (_UNITS.index(unit.casefold()) if unit else 0)))
+        else:
+            values.add(str(_UNITS.index(single.casefold())))
+    return {value for value in values if len(value) >= 2}
+
+
+def _recomputed(target: str, operands: list[str]) -> bool:
+    """Whether target is the sum of all operands, or a sum, difference, product or
+    quotient of two of them (the arithmetic an answer shows when it works a result out)."""
+
+    try:
+        goal = float(target)
+        values = [float(value) for value in operands]
+    except ValueError:
+        return False
+    if len(values) < 2:
+        return False
+
+    def same(value: float) -> bool:
+        return abs(value - goal) < 1e-9 * max(1.0, abs(goal))
+
+    if same(sum(values)):
+        return True
+    for index, first in enumerate(values):
+        for second in values[index + 1 :]:
+            candidates = [first + second, abs(first - second), first * second]
+            candidates += [first / second] if second else []
+            candidates += [second / first] if first else []
+            if any(same(candidate) for candidate in candidates):
+                return True
+    return False
+
+
+_MONTH_NAMES = (
+    "january", "february", "march", "april", "may", "june", "july", "august",
+    "september", "october", "november", "december",
+)
+
+
+def _date_assembled(date: str, given_numbers: set[str], evidence_text: str) -> bool:
+    """A date put together from the question's year and a day the evidence names.
+
+    "How many packets at the end of 2025?" + evidence "the cutoff of 17:00 on December 31"
+    supports "December 31, 2025": the year is given, the day is retrieved.
+    """
+
+    year, month, day = date.split("-")
+    if year not in given_numbers:
+        return False
+    month_name = _MONTH_NAMES[int(month) - 1]
+    return bool(
+        re.search(rf"\b{month_name}\s+0?{int(day)}\b", evidence_text)
+        or re.search(rf"\b0?{int(day)}\s+{month_name[:3]}", evidence_text)
+    )
+
+
 def canonical_dates(value: str) -> str:
     """Rewrite 'February 14, 2025' and '14 February 2025' as '2025-02-14'."""
 
@@ -785,5 +891,19 @@ def canonical_dates(value: str) -> str:
     return _DAY_MONTH_YEAR.sub(lambda m: iso(m.group(3), m.group(2), m.group(1)), value)
 
 
+_SOURCE_REFERENCE = re.compile(
+    r"\(?\b(?:lines?|pp?\.|pages?)\s+\d+(?:\s*[-–]\s*\d+)?\)?"  # (lines 158-174)
+    r"|\b[\w.-]+\.(?:txt|md|csv|json|rst|ya?ml)\b"  # annual_operations_2025.txt
+    r"|\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b",  # evidence ids
+    re.IGNORECASE,
+)
+
+
 def _strip_rendered_citations(value: str) -> str:
-    return re.sub(r"\[[^\]]+\]", " ", value)
+    """Remove citation labels and source references the model wrote into its prose.
+
+    "According to annual_operations_2025.txt (lines 158-174), ..." names where a fact is,
+    not a fact: file names, line numbers and evidence ids are not claims to check.
+    """
+
+    return _SOURCE_REFERENCE.sub(" ", re.sub(r"\[[^\]]+\]", " ", value))

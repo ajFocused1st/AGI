@@ -93,6 +93,22 @@ class UnreadableFirstAnswerAdapter(ScriptedModelAdapter):
         return await super().generate(request)
 
 
+class UnreadablePhaseAdapter(ScriptedModelAdapter):
+    """Output for one phase is cut off the first time; everything else is scripted."""
+
+    def __init__(self, replies: list[ScriptedReply], phase: str) -> None:
+        super().__init__(replies)
+        self.phase = phase
+        self.failed = False
+
+    async def generate(self, request):  # type: ignore[override]
+        if request.metadata.get("phase") == self.phase and not self.failed:
+            self.failed = True
+            self.requests.append(request.model_copy(deep=True))
+            raise FakeResponseValidationError("Model output was not strict JSON (Unterminated string)")
+        return await super().generate(request)
+
+
 class TruncatedIdAdapter(CitingAdapter):
     """Cites the evidence id with its last character missing, as the live model did."""
 
@@ -605,6 +621,156 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
         payload, changed = _reconcile_evidence_ids({"cited_evidence_ids": [str(uuid4())]}, evidence)
         self.assertEqual(payload["cited_evidence_ids"], [])
         self.assertEqual(changed, 1)
+
+    # --- two-step questions: search for the person the answer named ----------------------
+
+    AUDIT_GOAL = "What is the job title of the person in charge of the Lantern Audit?"
+
+    def write_audit_documents(self) -> None:
+        root = Path(self._documents.name)
+        (root / "reviews.md").write_text("# Reviews\n\nThe Lantern Audit is led by Miran Seln.\n", encoding="utf-8")
+        # Shares no word with the question, so only a search for the name finds it.
+        (root / "directory.md").write_text(
+            "# Staff directory\n\nMiran Seln works as Inventory Coordinator, from Dale.\n", encoding="utf-8"
+        )
+
+    async def test_an_answer_naming_the_described_person_triggers_a_search_for_them(self) -> None:
+        self.write_audit_documents()
+        record, adapter = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}}),
+                reply({"answer": "Miran Seln leads the Lantern Audit."}),
+                reply({"answer": "Miran Seln, who leads the Lantern Audit, is the Inventory Coordinator."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            self.AUDIT_GOAL,
+        )
+        bridge = next(a for a in record.metadata["host_actions"] if a["action"] == "host_bridge_search")
+        self.assertTrue(bridge["queries"][0].startswith("Miran Seln"))
+        self.assertIn("Inventory Coordinator", " ".join(i.excerpt for i in record.evidence_bundle.items))
+        bridge_request = next(r for r in adapter.requests if r.metadata.get("phase") == "answer_bridge")
+        self.assertIn("Your previous answer named Miran Seln", bridge_request.messages[-1].content)
+        self.assertIn("Inventory Coordinator", record.response.answer)
+
+    async def test_a_question_asking_who_mid_sentence_is_not_searched_again(self) -> None:
+        # Live multihop case mh-03: "Compare who is responsible ..." asks for the names.
+        self.write_audit_documents()
+        record, _ = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}}),
+                reply({"answer": "Miran Seln leads the Lantern Audit."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            "Compare who leads the Lantern Audit and who leads the Thistle Cycle.",
+        )
+        self.assertNotIn("host_bridge_search", str(record.metadata.get("host_actions")))
+
+    async def test_a_who_question_is_not_searched_again(self) -> None:
+        self.write_audit_documents()
+        record, adapter = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}}),
+                reply({"answer": "Miran Seln leads the Lantern Audit."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            "Who is in charge of the Lantern Audit?",
+        )
+        self.assertNotIn("host_bridge_search", str(record.metadata.get("host_actions")))
+        self.assertNotIn("answer_bridge", [r.metadata.get("phase") for r in adapter.requests])
+
+    async def test_citations_still_resolve_after_a_later_search(self) -> None:
+        # Live benchmarks: a search made after the answer rebuilt the evidence with new ids,
+        # and the answer's citations pointed at nothing.
+        self.write_audit_documents()
+        adapter = CitingAdapter(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}})],
+            ["Miran Seln leads the Lantern Audit."],
+        )
+        record, _ = await self.run_case(
+            [],
+            TaskRequirements(
+                required_capabilities=[SEARCH], requires_grounding=True, requires_citations=True, minimum_citation_count=1
+            ),
+            self.AUDIT_GOAL,
+            adapter,
+        )
+        self.assertIn("host_bridge_search", str(record.metadata.get("host_actions")))
+        evidence_ids = {item.evidence_id for item in record.evidence_bundle.items}
+        self.assertTrue(record.response.citations)
+        self.assertTrue(all(c.evidence_id in evidence_ids for c in record.response.citations))
+
+    async def test_a_cut_off_follow_up_or_plan_is_not_a_crash(self) -> None:
+        requirements = self.search_required.model_copy(update={"task_subjects": ["Kestrel", "Osprey"]})
+        adapter = UnreadablePhaseAdapter(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel flow rate"}}),
+                reply({"answer": "Kestrel moves 40 litres per minute."}),
+            ],
+            phase="observe",
+        )
+        record, _ = await self.run_case([], requirements, RIVAL_GOAL, adapter)
+        self.assertIn("follow_up_output_unreadable", [e.code for e in record.errors])
+        self.assertEqual(record.status.value, "completed")
+
+        adapter = UnreadablePhaseAdapter(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}),
+                reply({"answer": "Kestrel moves 40 litres per minute."}),
+            ],
+            phase="plan",
+        )
+        record, _ = await self.run_case([], self.search_required, KESTREL_GOAL, adapter)
+        self.assertIn("plan_output_unreadable", [e.code for e in record.errors])
+        self.assertEqual(record.status.value, "completed")
+        self.assertEqual(record.response.answer, "Kestrel moves 40 litres per minute.")
+
+    async def test_an_empty_repair_does_not_replace_the_answer(self) -> None:
+        # Live runs: a repair returned nothing and the user saw "The response requirements
+        # could not be satisfied." in place of a correct but imperfectly cited answer.
+        record, _ = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}),
+                # An uncited claim in a grounded task, so a repair is requested.
+                reply({"claims": [{"text": "Kestrel moves 40 litres per minute, says engineer Dana Ruiz.", "evidence_ids": []}]}),
+                reply({"claims": []}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH], requires_grounding=True),
+            KESTREL_GOAL,
+        )
+        self.assertIn("answer_correction_empty", [e.code for e in record.errors])
+        self.assertTrue(record.response.answer.startswith("Kestrel moves 40 litres per minute"))
+
+    async def test_an_empty_first_answer_is_never_graded_as_an_answer(self) -> None:
+        # Live Veyra Q35: an empty first answer was shown as "The response requirements
+        # could not be satisfied." and graded passed.
+        record, _ = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}),
+                reply({"claims": []}),
+                reply({"answer": "Kestrel moves 40 litres per minute."}),
+            ],
+            self.search_required,
+            KESTREL_GOAL,
+        )
+        self.assertIn("answer_output_empty", [e.code for e in record.errors])
+        self.assertEqual(record.response.answer, "Kestrel moves 40 litres per minute.")
+
+        record, _ = await self.run_case(
+            [plan({"tool_name": SEARCH, "arguments": {"query": "Kestrel litres"}}), reply({"claims": []}), reply({"claims": []})],
+            self.search_required,
+            KESTREL_GOAL,
+        )
+        self.assertNotEqual(record.evaluation.verdict.value, "passed")
+        self.assertNotIn("could not be satisfied", record.response.answer)
+
+    def test_repair_advice_names_terms_only_when_the_checks_did(self) -> None:
+        from agi_agent_runtime.runtime import _correction_advice
+
+        named = _correction_advice(["document_evidence_support: supported concrete terms: 3/5; missing cited entities: dana, ruiz"])
+        self.assertIn("dana, ruiz", named)
+        vague = _correction_advice(["document_evidence_support: supported concrete terms: 1/5"])
+        self.assertNotIn("Remove", vague)
+        self.assertIn("Keep answering the question", vague)
 
     async def test_a_blocked_run_without_its_required_tool_cannot_pass(self) -> None:
         # Live run: no tool ran, the answer said "the evidence does not contain" it, and the

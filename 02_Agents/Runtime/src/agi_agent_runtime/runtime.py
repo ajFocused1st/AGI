@@ -264,13 +264,7 @@ class AgentRuntime:
             usage, telemetry = ModelUsage(), None
             state.host_actions.append({"action": "host_plan", "tool_name": HOST_RETRIEVAL_TOOL})
         elif self._routing_policy.allow_tools:
-            state.plan, state.tool_call_drafts, usage, telemetry = await self._create_plan(
-                state.run_id,
-                state.request,
-                state.profile,
-                requirements=requirements,
-                governor=state.governor,
-            )
+            state.plan, state.tool_call_drafts, usage, telemetry = await self._readable_plan(state)
         else:
             # Tool-free tiers (FAST) answer directly: a host-owned one-step plan, no plan call.
             state.plan = TaskPlan(
@@ -283,13 +277,8 @@ class AgentRuntime:
         if not result.valid:
             state.extend_tool_trace(*self._blocked_plan_proposals(state.tool_call_drafts, result))
         if not result.valid and self._routing_policy.allow_revision:
-            state.plan, state.tool_call_drafts, usage, telemetry = await self._create_plan(
-                state.run_id,
-                state.request,
-                state.profile,
-                requirements=requirements,
-                correction=result,
-                governor=state.governor,
+            state.plan, state.tool_call_drafts, usage, telemetry = await self._readable_plan(
+                state, correction=result
             )
             state.add_model_call(usage, telemetry)
             result = self._validate_plan(state, correction_attempted=True)
@@ -351,6 +340,38 @@ class AgentRuntime:
         state.extend_tool_trace(
             *self._policy_denials(set(requirements.forbidden_capabilities) - recorded_denials)
         )
+
+    async def _readable_plan(
+        self, state: _RunState, *, correction: PlanRequirementResult | None = None
+    ) -> tuple[TaskPlan, list[ToolCallDraft], ModelUsage, dict[str, Any] | None]:
+        """The model's plan, or an empty one when its output could not be read.
+
+        An empty plan fails validation like any plan that misses a required tool, so the
+        usual correction and host retrieval still apply instead of the run crashing.
+        """
+
+        try:
+            return await self._create_plan(
+                state.run_id,
+                state.request,
+                state.profile,
+                requirements=state.requirements,
+                correction=correction,
+                governor=state.governor,
+            )
+        except Exception as exc:
+            if not _is_unreadable_model_output(exc):
+                raise
+            state.errors.append(
+                ErrorDetail(
+                    code="plan_output_unreadable",
+                    message="The model's plan was malformed or cut off and was replaced by an empty plan.",
+                    component="agent_runtime",
+                    details={"error_type": type(exc).__name__, "correction": correction is not None},
+                )
+            )
+            plan = TaskPlan(goal=state.request.goal, steps=[TaskStep(description="Answer the goal")])
+            return plan, [], ModelUsage(), None
 
     def _host_search_plan(self, state: _RunState) -> tuple[TaskPlan, list[ToolCallDraft]] | None:
         """The host's own plan for a question that needs exactly one thing: a search.
@@ -557,7 +578,22 @@ class AgentRuntime:
         ) - state.governor.ledger.tool_attempts
         if tool_slots <= 0:
             return False
-        proposals, usage, telemetry = await self._create_follow_up(state, gaps, tool_slots)
+        try:
+            proposals, usage, telemetry = await self._create_follow_up(state, gaps, tool_slots)
+        except Exception as exc:
+            if not _is_unreadable_model_output(exc):
+                raise
+            # A cut-off or malformed follow-up ends the round; the answer uses what was found.
+            state.follow_up_rounds += 1
+            state.errors.append(
+                ErrorDetail(
+                    code="follow_up_output_unreadable",
+                    message="The model's follow-up request was malformed or cut off and was skipped.",
+                    component="agent_runtime",
+                    details={"error_type": type(exc).__name__},
+                )
+            )
+            return False
         state.add_model_call(usage, telemetry)
         state.follow_up_rounds += 1
         if not proposals:
@@ -706,10 +742,30 @@ class AgentRuntime:
         state.add_model_call(usage, telemetry)
         result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
         state.response_requirement_results.append(result)
+        bridged = await self._bridge_search(state)
+        if bridged and self._calls_left(state) >= 1:
+            # The answer named someone the question only described ("the person in charge
+            # of the Lantern Audit"); their own record was searched, so answer again and say
+            # why, or the model repeats the name.
+            note = (
+                f"Your previous answer named {' and '.join(bridged)}. The question asks for a detail "
+                "about that person or thing (for example a title, role, place or number), not for "
+                "the name itself. New evidence about them has been added: answer exactly what the "
+                "question asks, citing that evidence."
+            )
+            draft, usage, telemetry = await self._readable_model_answer(
+                state, phase="answer_bridge", note=note
+            )
+            state.add_model_call(usage, telemetry)
+            result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
+            state.response_requirement_results[-1] = result
         if (
             state.requirements.requires_grounding
             and self._can_follow_up(state)
-            and (draft.insufficient_evidence or contains_uncertainty_statement(state.answer_text))
+            and (
+                (draft is not None and draft.insufficient_evidence)
+                or contains_uncertainty_statement(state.answer_text)
+            )
         ):
             # Multi-hop: the answer itself reports a missing fact (e.g. a bridging hop).
             # One follow-up round; re-answer only if it produced new evidence.
@@ -730,9 +786,20 @@ class AgentRuntime:
         ):
             draft, usage, telemetry = await self._readable_model_answer(state, correction=result)
             state.add_model_call(usage, telemetry)
-            result = self._apply_readable_answer(
-                state, draft, AnswerSource.MODEL_CORRECTION, correction_attempted=True
-            )
+            if draft is None and state.answer_text.strip() and "readable_answer" not in result.missing_requirements:
+                # An empty or unreadable repair is not an improvement: keep the answer it
+                # was meant to fix.
+                state.errors.append(
+                    ErrorDetail(
+                        code="answer_correction_empty",
+                        message="The repaired answer was empty or unreadable; the previous answer was kept.",
+                        component="agent_runtime",
+                    )
+                )
+            else:
+                result = self._apply_readable_answer(
+                    state, draft, AnswerSource.MODEL_CORRECTION, correction_attempted=True
+                )
             state.response_requirement_results.append(result)
         if not result.valid and state.evidence and _can_use_fallback_response(result):
             draft = _fallback_answer_draft(
@@ -769,12 +836,83 @@ class AgentRuntime:
                 )
             )
 
+    async def _bridge_search(self, state: _RunState) -> list[str]:
+        """Search for a person the draft answer introduced; the names, if new evidence was found.
+
+        Two-step questions ("What is the job title of the person in charge of the Lantern
+        Audit?") are often answered with the first step only: the person's name. The
+        question describes someone without naming them, so the record holding the asked-for
+        detail was never searched. When a what/which/where question gets an answer naming
+        someone the question did not, the host searches for that name together with the
+        question's words that the evidence about them does not yet cover. Who-questions
+        are left alone: there the name is the answer.
+        """
+
+        requirements = state.requirements
+        goal = " ".join(state.request.goal.split())
+        if (
+            not goal
+            or _asks_for_a_person(goal)
+            or not _DESCRIBES_SOMEONE.search(" ".join(goal.split()[1:]))
+            or HOST_RETRIEVAL_TOOL not in requirements.required_capabilities
+            or HOST_RETRIEVAL_TOOL not in self._allowed_capabilities(state)
+            or not self._routing_policy.allow_retrieval
+            or self._calls_left(state) < 1
+        ):
+            return []
+        limits = [state.profile.max_tool_calls, self._routing_policy.budget.max_tool_calls]
+        if requirements.maximum_tool_calls is not None:
+            limits.append(requirements.maximum_tool_calls)
+        slots = min(limits) - state.governor.ledger.tool_attempts
+        goal_folded = goal.casefold()
+        names = [
+            name
+            for name in dict.fromkeys(_NAME.findall(_strip_citation_labels(state.answer_text)))
+            if not all(word.casefold() in goal_folded for word in name.split())
+        ][: max(0, min(2, slots))]
+        if not names:
+            return []
+        asked = [word for word in _bridge_terms(goal)]
+        searched = {
+            " ".join(str(request.arguments.get("query", "")).split()).casefold()
+            for request in state.tool_requests
+            if request.tool_name == HOST_RETRIEVAL_TOOL
+        }
+        drafts: list[ToolCallDraft] = []
+        for name in names:
+            about = " ".join(
+                item.excerpt or "" for item in state.evidence if name.casefold() in (item.excerpt or "").casefold()
+            ).casefold()
+            missing = [word for word in asked if word not in about][:6]
+            query = " ".join([name, *missing])[:200]
+            if query.casefold() not in searched:
+                drafts.append(
+                    ToolCallDraft(tool_name=HOST_RETRIEVAL_TOOL, arguments={"query": query}, purpose="host_bridge_search")
+                )
+        if not drafts:
+            return []
+
+        def content(items: list[EvidenceReference]) -> set[tuple[str, str | None, str | None]]:
+            return {(item.source_id, item.locator, item.excerpt) for item in items}
+
+        before = content(state.evidence)
+        await self._dispatch(state, drafts)
+        state.host_actions.append(
+            {
+                "action": "host_bridge_search",
+                "tool_name": HOST_RETRIEVAL_TOOL,
+                "queries": [draft.arguments["query"] for draft in drafts],
+            }
+        )
+        return names if content(state.evidence) - before else []
+
     async def _readable_model_answer(
         self,
         state: _RunState,
         *,
         correction: ResponseRequirementResult | None = None,
         phase: str | None = None,
+        note: str | None = None,
     ) -> tuple[AnswerDraft | None, ModelUsage, dict[str, Any] | None]:
         """A model answer, or None when the model's output could not be read.
 
@@ -784,7 +922,21 @@ class AgentRuntime:
         """
 
         try:
-            return await self._model_answer(state, correction=correction, phase=phase)
+            draft, usage, telemetry = await self._model_answer(
+                state, correction=correction, phase=phase, note=note
+            )
+            if _is_empty_draft(draft):
+                # Nothing to show: treated like a cut-off answer, never graded as one.
+                state.errors.append(
+                    ErrorDetail(
+                        code="answer_output_empty",
+                        message="The model returned an empty answer.",
+                        component="agent_runtime",
+                        details={"phase": phase or ("answer_correction" if correction else "answer")},
+                    )
+                )
+                return None, usage, telemetry
+            return draft, usage, telemetry
         except Exception as exc:
             if not _is_unreadable_model_output(exc):
                 raise
@@ -832,6 +984,7 @@ class AgentRuntime:
         *,
         correction: ResponseRequirementResult | None = None,
         phase: str | None = None,
+        note: str | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         assert state.plan is not None
         repairs: list[int] = []
@@ -847,6 +1000,7 @@ class AgentRuntime:
             governor=state.governor,
             phase=phase,
             citation_repairs=repairs,
+            note=note,
         )
         if repairs:
             state.errors.append(
@@ -1577,6 +1731,7 @@ class AgentRuntime:
         governor: BudgetGovernor,
         phase: str | None = None,
         citation_repairs: list[int] | None = None,
+        note: str | None = None,
     ) -> tuple[AnswerDraft, ModelUsage, dict[str, Any] | None]:
         phase = phase or ("answer_correction" if correction is not None else "answer")
         model_request = ModelRequest(
@@ -1615,15 +1770,12 @@ class AgentRuntime:
                             **(
                                 {
                                     "problems_to_fix": correction.validation_messages,
-                                    "how_to_fix": (
-                                        "Remove every name, number, or term listed as unsupported, "
-                                        "or replace it with wording found in the evidence. Do not "
-                                        "add facts from outside the evidence."
-                                    ),
+                                    "how_to_fix": _correction_advice(correction.validation_messages),
                                 }
                                 if correction is not None and correction.validation_messages
                                 else {}
                             ),
+                            **({"note": note} if note else {}),
                         },
                         ensure_ascii=False,
                     ),
@@ -2249,6 +2401,32 @@ def _model_telemetry(phase: str, raw_metadata: dict[str, Any]) -> dict[str, Any]
     return telemetry
 
 
+_NAMED_PROBLEM = re.compile(r"(?:missing cited entities|uncited dates or numbers):\s*([^;]+)")
+
+
+def _correction_advice(messages: list[str]) -> str:
+    """What to change, naming the exact terms when the checks named them.
+
+    A general "remove what is unsupported" made the model delete its whole answer when
+    the complaint was only a ratio of supported words; the answer must stay.
+    """
+
+    named = [term.strip() for message in messages for match in _NAMED_PROBLEM.finditer(message)
+             for term in match.group(1).split(",") if term.strip()]
+    keep = (
+        "Keep answering the question in one or two short sentences, stating only what the "
+        "cited evidence says, with the evidence_id that supports each claim. Do not mention "
+        "file names, line numbers or how you searched."
+    )
+    if named:
+        return f"Remove or correct these terms, which the cited evidence does not support: {', '.join(dict.fromkeys(named))}. {keep}"
+    return keep
+
+
+def _is_empty_draft(draft: AnswerDraft) -> bool:
+    return not (draft.answer or draft.claims or draft.uncertainty or draft.summary)
+
+
 def _is_unreadable_model_output(exc: BaseException) -> bool:
     """Malformed, cut-off, or schema-breaking model output (any provider), not an outage.
 
@@ -2261,6 +2439,48 @@ def _is_unreadable_model_output(exc: BaseException) -> bool:
     return isinstance(exc, PydanticValidationError) or type(exc).__name__.endswith(
         ("ResponseValidationError", "ProtocolError")
     )
+
+
+# Two or three capitalised words in a row (a person's or unit's name), after dropping a
+# sentence-initial article.
+_NAME = re.compile(r"(?<!\w)(?:(?:The|A|An)\s+)?((?:[A-Z][a-z]+)(?:\s+[A-Z][a-z]+){1,2})(?!\w)")
+# A question that describes someone instead of naming them: "the person who signed",
+# "the chair of the April interview", "the custodian responsible for Nera Room".
+_DESCRIBES_SOMEONE = re.compile(
+    r"\b(who|whom|whose|person|people|someone|employee|staff member|chair|leader|lead|head|"
+    r"custodian|manager|owner|coordinator|supervisor|director|officer|speaker|author|signer)\b",
+    re.IGNORECASE,
+)
+_BRIDGE_STOPWORDS = frozenset(
+    "a an and are as at be by did do does for from has have how in is it its of on or "
+    "that the their this to was were what when where which who whom whose with person "
+    "people someone listed held hold holds".split()
+)
+
+
+_WHO = re.compile(r"\b(who|whom|whose)\b", re.IGNORECASE)
+# "the person who signed" describes someone; "Compare who is responsible" asks for them.
+_DESCRIBED_BY_WHO = frozenset(
+    "person people someone anyone one employee employees member members staff individual "
+    "officer official worker workers".split()
+)
+
+
+def _asks_for_a_person(goal: str) -> bool:
+    for match in _WHO.finditer(goal):
+        before = goal[: match.start()].split()
+        if not before or before[-1].casefold().strip(",") not in _DESCRIBED_BY_WHO:
+            return True
+    return False
+
+
+def _strip_citation_labels(text: str) -> str:
+    return re.sub(r"\[[^\]]*\]", " ", text)
+
+
+def _bridge_terms(goal: str) -> list[str]:
+    words = re.findall(r"[a-z0-9][a-z0-9'-]*", goal.casefold())
+    return list(dict.fromkeys(w for w in words if len(w) > 2 and w not in _BRIDGE_STOPWORDS))
 
 
 _UUID_TEXT = re.compile(r"^[0-9a-fA-F-]{8,36}$")

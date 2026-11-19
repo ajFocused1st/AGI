@@ -54,6 +54,19 @@ class RankingTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual((match.line_start, match.line_end, match.line_number), (3, 5, 3))
 
+    async def test_plain_text_first_line_is_the_document_title(self) -> None:
+        (self.root / "ferry.txt").write_text(
+            "NORTHWIND FERRY COOPERATIVE\nInternal reference\n\nThe Archive ships 90 crates a week.\n",
+            encoding="utf-8",
+        )
+        (self.root / "prose.txt").write_text("This file starts with a sentence. It has no title.\n", encoding="utf-8")
+        titles = {m.relative_path: m.document_title for m in (await self.run_search("crates week sentence")).matches}
+        self.assertEqual(titles.get("ferry.txt"), "NORTHWIND FERRY COOPERATIVE")
+        self.assertIsNone(titles.get("prose.txt"))
+        # Markdown documents keep their heading as the title.
+        harbor = (await self.run_search("When did Harbor Depot open?")).matches[0]
+        self.assertEqual(harbor.document_title, "Harbor Depot")
+
     async def test_question_carries_its_solution(self) -> None:
         (self.root / "exercises.txt").write_text(
             "Which gauge readings are consistent with the meter?\n"

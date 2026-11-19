@@ -761,12 +761,22 @@ def _comparison_units(units: list[_Unit], terms: set[str]) -> list[_Unit]:
     return selected
 
 
+def _plain_title(lines: list[str]) -> str | None:
+    first = next((" ".join(line.split()) for line in lines if line.strip()), "")
+    if not first or first.startswith("#") or len(first) > 80 or _ENDS_SENTENCE.search(first):
+        return None
+    return first
+
+
 def _units(documents: list[_ScannedDocument], passage_chars: int) -> list[_Unit]:
     units: list[_Unit] = []
     for document in documents:
         name_terms = set(_content_terms(PurePosixPath(document.relative_path).stem))
         heading_terms: set[str] = set()
-        heading_text: str | None = None
+        # A plain-text document's short first line ("NORTHWIND FERRY COOPERATIVE") is its
+        # title until a markdown heading says otherwise. It is reported as provenance only;
+        # it does not change ranking.
+        heading_text: str | None = _plain_title(document.lines)
         section: list[tuple[int, str]] = []
         # A trailing heading marker closes the last section.
         for line_number, line in [*enumerate(document.lines, start=1), (0, "#")]:

@@ -3439,20 +3439,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 593,
+      "input_tokens": 608,
       "kind": "model_usage",
       "output_tokens": 11,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 604
+      "total_tokens": 619
      }
     ],
-    "input_tokens": 1699,
+    "input_tokens": 1714,
     "model_attempts": 3,
     "output_tokens": 100,
     "tier": "standard",
     "tool_attempts": 3,
-    "total_tokens": 1799
+    "total_tokens": 1814
    },
    "host_actions": [
     {
@@ -4350,20 +4350,20 @@
      {
       "accepted": true,
       "estimated": true,
-      "input_tokens": 473,
+      "input_tokens": 487,
       "kind": "model_usage",
       "output_tokens": 22,
       "phase": "answer_correction",
       "reason": null,
-      "total_tokens": 495
+      "total_tokens": 509
      }
     ],
-    "input_tokens": 1446,
+    "input_tokens": 1460,
     "model_attempts": 3,
     "output_tokens": 75,
     "tier": "standard",
     "tool_attempts": 2,
-    "total_tokens": 1521
+    "total_tokens": 1535
    },
    "host_actions": [
     {

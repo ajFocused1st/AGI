@@ -273,6 +273,77 @@ class CorrectAnswerFalseAlarmTests(unittest.TestCase):
         self.assertTrue(self._supported(right, excerpt, goal=goal))
         self.assertFalse(self._supported(wrong, excerpt, goal=goal))
 
+    def test_a_year_from_the_question_is_given(self) -> None:
+        # Live Veyra Q2: the answer repeated "2025" from the question and was failed.
+        goal = "How many field workshops did the Archive conduct during 2025?"
+        excerpt = "The Archive conducted thirty-eight field workshops during the reporting year."
+        self.assertTrue(self._supported("The Archive conducted thirty-eight field workshops in 2025.", excerpt, goal=goal))
+        self.assertFalse(self._supported("The Archive conducted thirty-eight field workshops in 2024.", excerpt, goal=goal))
+
+    def test_a_date_built_from_the_given_year_and_a_retrieved_day(self) -> None:
+        # Live Veyra Q1: "December 31, 2025" = the question's year + "on December 31" in evidence.
+        from uuid import uuid4
+
+        from agi_contracts import Citation, EvidenceReference
+        from agi_evaluation.evaluator import RuleBasedEvaluator
+
+        goal = "How many sealed accession packets did the Archive have at the end of 2025?"
+        cited = EvidenceReference(
+            evidence_id=uuid4(), source_id="d", source_path="ops.txt",
+            excerpt="The permanent working stores contained 14,235 sealed accession packets at the year-end cutoff.",
+        )
+        cutoff = EvidenceReference(
+            evidence_id=uuid4(), source_id="d", source_path="ops.txt",
+            excerpt="The records team used a common reporting cutoff of 17:00 on December 31.",
+        )
+
+        def supported(answer: str) -> bool:
+            ok, _ = RuleBasedEvaluator._document_claim_support(
+                goal=goal, answer=answer, evidence=[cited, cutoff],
+                citations=[Citation(evidence_id=cited.evidence_id, label="ops")],
+            )
+            return ok
+
+        self.assertTrue(supported("The stores contained 14,235 sealed accession packets at the cutoff on December 31, 2025."))
+        self.assertFalse(supported("The stores contained 14,235 sealed accession packets at the cutoff on December 30, 2025."))
+        self.assertFalse(supported("The stores contained 14,235 sealed accession packets at the cutoff on December 31, 2024."))
+
+    def test_month_names_are_not_treated_as_names(self) -> None:
+        # Live Veyra Q31: "December" was flagged as a missing entity.
+        excerpt = "The preliminary figure of 94 recorded in the December 16, 2025 minutes is replaced by 89."
+        self.assertTrue(self._supported("The final figure is 89, replacing the 94 recorded in December 2025.", excerpt))
+        self.assertFalse(self._supported("The final figure is 89, as approved by Priya Natarajan.", excerpt))
+
+    def test_source_references_in_prose_are_not_claims(self) -> None:
+        # Live Veyra Q39: "According to ... annual_operations_2025.txt (lines 158-174), ...".
+        goal = "How many new sleeves were issued during the third quarter?"
+        excerpt = "TABLE 2. Quarter Repair labels New sleeves Inspection ties Q3 74 111 39"
+        answer = (
+            "According to the evidence provided in Table 2 of annual_operations_2025.txt "
+            "(lines 158-174), the number of new sleeves issued during the third quarter was {}."
+        )
+        self.assertTrue(self._supported(answer.format(111), excerpt, goal=goal))
+        self.assertFalse(self._supported(answer.format(141), excerpt, goal=goal))
+
+    def test_a_sentence_after_a_closing_quote_starts_with_a_capital(self) -> None:
+        # Live Veyra Q5: "... amber tabs.' Additionally, ..." made "Additionally" a name.
+        excerpt = "The official movement ledger uses amber tabs. The committee retained amber."
+        answer = "The handbook states 'The official movement ledger uses amber tabs.' Additionally, the committee retained amber."
+        self.assertTrue(self._supported(answer, excerpt))
+
+    def test_arithmetic_shown_in_the_answer_is_recomputed(self) -> None:
+        # Live Veyra Q16/Q17: the model added and multiplied cited numbers in the open.
+        table = "Q1 52 96 31 Q2 68 104 35 Q3 74 111 39 Q4 63 88 33"
+        sum_answer = "Repair labels per quarter were Q1=52, Q2=68, Q3=74 and Q4=63, a total of {}."
+        self.assertTrue(self._supported(sum_answer.format(257), table))
+        self.assertFalse(self._supported(sum_answer.format(267), table))
+        crates = "The cache contains twelve training crates. Each crate holds eighteen demonstration trays."
+        product = "The cache has 12 crates of 18 trays each, so it holds {} demonstration trays."
+        self.assertTrue(self._supported(product.format(216), crates))
+        self.assertFalse(self._supported(product.format(226), crates))
+        # A total with no operands shown is still unverified.
+        self.assertFalse(self._supported("The repair labels total 257.", table))
+
     def test_numbers_with_thousands_separators_are_one_number(self) -> None:
         excerpt = "Harbor Line recorded 12,480 tickets in 2024 and 14,235 in 2025."
         computed = "(12480 + 14235) = 26715"
