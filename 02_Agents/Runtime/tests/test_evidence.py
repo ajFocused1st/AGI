@@ -16,7 +16,10 @@ class EvidenceBundleTests(unittest.TestCase):
         repeated = build_evidence_bundle([request], [_result(request, "Fact one")])
         changed = build_evidence_bundle([request], [_result(request, "Fact two")])
         self.assertEqual(first.items[0].source_hash, repeated.items[0].source_hash)
-        self.assertNotEqual(first.items[0].evidence_id, repeated.items[0].evidence_id)
+        # The same passage keeps its id across rebuilds, so citations made before a later
+        # search still resolve; different content gets a different id.
+        self.assertEqual(first.items[0].evidence_id, repeated.items[0].evidence_id)
+        self.assertNotEqual(first.items[0].evidence_id, changed.items[0].evidence_id)
         self.assertEqual(first.bundle_hash, repeated.bundle_hash)
         self.assertNotEqual(first.bundle_hash, changed.bundle_hash)
 

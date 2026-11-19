@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 
 from agi_contracts import EvidenceBundle, EvidenceItem, ToolRequest, ToolResult
 
@@ -70,6 +71,7 @@ def build_evidence_bundle(
                     },
                 )
             )
+    items = _with_stable_ids(items)
     digest_payload = [
         {
             "source_id": item.source_id,
@@ -90,6 +92,34 @@ def build_evidence_bundle(
         evidence_count=len(items),
         bundle_hash=hashlib.sha256(encoded).hexdigest(),
     )
+
+
+_EVIDENCE_NAMESPACE = uuid.UUID("6f2c1e9a-4b7d-5a3e-9c1f-2d8e7b4a6c05")
+
+
+def _with_stable_ids(items: list[EvidenceItem]) -> list[EvidenceItem]:
+    """Give each item an id derived from its content, and drop exact repeats.
+
+    The bundle is rebuilt after every dispatch. With random ids, a search made after
+    the answer was written (a follow-up or bridge search) gave every item a new id and
+    left the answer's citations pointing at nothing. The same passage now keeps the
+    same id for the whole run.
+    """
+
+    stable: list[EvidenceItem] = []
+    seen: set[uuid.UUID] = set()
+    for item in items:
+        key = json.dumps(
+            [item.source_id, item.source_hash, item.excerpt, item.metadata.get("line_start"), item.metadata.get("line_end")],
+            ensure_ascii=False,
+            default=str,
+        )
+        evidence_id = uuid.uuid5(_EVIDENCE_NAMESPACE, key)
+        if evidence_id in seen:
+            continue  # the same passage or calculation twice: read it once
+        seen.add(evidence_id)
+        stable.append(item.model_copy(update={"evidence_id": evidence_id}))
+    return stable
 
 
 def _sanitize_excerpt(value: str) -> str:
