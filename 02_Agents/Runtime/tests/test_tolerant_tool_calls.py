@@ -699,6 +699,108 @@ class TolerantRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(record.response.citations)
         self.assertTrue(all(c.evidence_id in evidence_ids for c in record.response.citations))
 
+    def write_audit_record_in_one_file(self) -> None:
+        # The person's record is retrieved with the first search, so a bridge search adds
+        # nothing new: the answer that stopped at the name must still be asked again.
+        (Path(self._documents.name) / "audit.md").write_text(
+            "# Audit\n\nThe Lantern Audit is led by Miran Seln. Miran Seln works as Inventory Coordinator.\n",
+            encoding="utf-8",
+        )
+
+    async def test_an_answer_stopping_at_the_person_is_asked_again(self) -> None:
+        self.write_audit_record_in_one_file()
+        record, adapter = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}}),
+                reply({"answer": "The person in charge of the Lantern Audit is Miran Seln."}),
+                reply({"answer": "Miran Seln's job title is Inventory Coordinator."}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            self.AUDIT_GOAL,
+        )
+        self.assertIn("answer_bridge", [r.metadata.get("phase") for r in adapter.requests])
+        self.assertIn("Inventory Coordinator", record.response.answer)
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    async def test_an_answer_that_still_stops_at_the_person_is_partial(self) -> None:
+        self.write_audit_record_in_one_file()
+        halfway = "The person in charge of the Lantern Audit is Miran Seln."
+        record, _ = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "Lantern Audit leader"}}),
+                reply({"answer": halfway}),
+                reply({"answer": halfway}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            self.AUDIT_GOAL,
+        )
+        self.assertEqual(record.evaluation.verdict.value, "partial")
+        check = next(c for c in record.evaluation.rule_based_checks if c.name == "answers_the_question")
+        self.assertIn("Miran Seln", check.details)
+
+    def test_halfway_answers_are_told_apart_from_bare_answers(self) -> None:
+        from agi_agent_runtime.runtime import _halfway_answer
+
+        self.assertIsNotNone(_halfway_answer(self.AUDIT_GOAL, "The person in charge of the Lantern Audit is Miran Seln."))
+        # The detail itself, bare or with the word asked about, is an answer.
+        self.assertIsNone(_halfway_answer(self.AUDIT_GOAL, "Inventory Coordinator"))
+        self.assertIsNone(_halfway_answer(self.AUDIT_GOAL, "Miran Seln holds the title Inventory Coordinator."))
+        self.assertIsNone(
+            _halfway_answer("Which hometown is listed for the person who runs the desk?", "Marrow Fen")
+        )
+        # A who-question is answered by the name.
+        self.assertIsNone(_halfway_answer("Who is in charge of the Lantern Audit?", "The Lantern Audit is led by Miran Seln."))
+
+    def test_repair_advice_asks_for_the_calculation_behind_an_uncited_total(self) -> None:
+        from agi_agent_runtime.runtime import _correction_advice
+
+        advice = _correction_advice(["document_evidence_support: x; uncited dates or numbers: 257"])
+        self.assertIn("write the calculation from the cited figures", advice)
+        self.assertNotIn("Remove or correct these terms", advice)
+
+    async def test_a_not_stated_answer_cites_the_passage_that_says_so(self) -> None:
+        (Path(self._documents.name) / "policy.md").write_text(
+            "# Privacy\n\nThe Archive does not publish individual salaries or personal pay grades.\n",
+            encoding="utf-8",
+        )
+        record, _ = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "pay grade"}}),
+                reply({"answer": "The documents do not state the personal pay grade assigned to Tovan Mire."}),
+                reply({"tool_calls": []}),  # the follow-up round an absence answer gets
+            ],
+            TaskRequirements(
+                required_capabilities=[SEARCH], requires_grounding=True, requires_citations=True, minimum_citation_count=1
+            ),
+            "What personal pay grade was assigned to Tovan Mire?",
+        )
+        self.assertIn("cited_stated_absence", str(record.metadata.get("host_actions")))
+        self.assertEqual(len(record.response.citations), 1)
+        self.assertIn("policy.md", record.response.answer)
+        self.assertEqual(record.evaluation.verdict.value, "passed")
+
+    async def test_an_answer_listing_the_parts_of_a_total_is_asked_for_the_total(self) -> None:
+        (Path(self._documents.name) / "cache.md").write_text(
+            "# Cache\n\nThe cache holds 12 crates. Each crate holds 18 trays.\n", encoding="utf-8"
+        )
+        parts = "The cache holds 12 crates and each crate holds 18 trays."
+        goal = "What is the total tray capacity of the cache?"
+        record, adapter = await self.run_case(
+            [
+                plan({"tool_name": SEARCH, "arguments": {"query": "cache crates trays"}}),
+                reply({"answer": parts}),
+                reply({"answer": parts}),
+            ],
+            TaskRequirements(required_capabilities=[SEARCH]),
+            goal,
+        )
+        total_request = next(r for r in adapter.requests if r.metadata.get("phase") == "answer_total")
+        self.assertIn("asks for the total", total_request.messages[-1].content)
+        self.assertEqual(record.evaluation.verdict.value, "partial")
+        self.assertIn(
+            "answers_the_question", [c.name for c in record.evaluation.rule_based_checks if not c.passed]
+        )
+
     async def test_a_cut_off_follow_up_or_plan_is_not_a_crash(self) -> None:
         requirements = self.search_required.model_copy(update={"task_subjects": ["Kestrel", "Osprey"]})
         adapter = UnreadablePhaseAdapter(

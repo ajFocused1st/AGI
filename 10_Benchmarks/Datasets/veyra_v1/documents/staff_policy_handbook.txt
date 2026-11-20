@@ -1,0 +1,342 @@
+VEYRA SEED ARCHIVE
+STAFF AND POLICY HANDBOOK
+Edition 4, effective January 6, 2025
+Reference: VSA-HBK-04
+Public operational edition
+
+
+PURPOSE AND APPLICATION
+
+
+This handbook explains the duties, access rights, procedural vocabulary, and recordkeeping obligations of staff working for the Veyra Seed Archive. It covers permanent employees, temporary assistants, supervised volunteers, and visiting researchers who have received written permission to enter controlled areas.
+
+
+The handbook is a procedural guide. It does not replace the founding rules, the official movement ledger, or a properly issued correction notice. Where an earlier operational record conflicts with a later authorized correction, staff must follow the corrected record and retain the earlier version for audit purposes.
+
+
+An employee's assigned role describes that person's primary responsibility. Being named as the leader of a temporary project does not change that role. Similarly, the individual responsible for a room may not necessarily be authorized to approve every movement involving that room.
+
+
+Personnel records contain additional private administrative material that is not reproduced here. The directory is limited to information needed for operational identification, project routing, and communication among the Archive's working groups.
+
+
+STAFF DIRECTORY
+
+
+Elian Voss
+Role: Primary Storage Custodian
+Hometown: Marrow Fen
+Primary assignment: Nera Room
+Authorized work: working-store inspection, physical packet verification, and routine seal checks.
+
+
+Elia Voss
+Role: Reserve Storage Custodian
+Hometown: Talven Reach
+Primary assignment: Nerva Room
+Authorized work: duplicate-store inspection, reserve inventory checks, and supervised trial preparation.
+
+
+Mira Seln
+Role: Records Curator
+Hometown: Dareth Hollow
+Primary assignment: Thistle records desk
+Authorized work: accession history review, reconciliation documentation, and obsolete form retention.
+
+
+Miran Seln
+Role: Audit Coordinator
+Hometown: Tirren Hollow
+Primary assignment: Lantern review desk
+Authorized work: authorization sequence checks, evidence indexing, and review scheduling.
+
+
+Sova Renn
+Role: Safety Examiner
+Hometown: Kelda Spur
+Primary assignment: controlled access and incident review
+Authorized work: restricted-area observations, emergency access assessments, and safety exception review.
+
+
+Sovia Renn
+Role: Training Supervisor
+Hometown: Vellin Ford
+Primary assignment: demonstration facilities
+Authorized work: training records, volunteer supervision, and workshop equipment inspections.
+
+
+Rovan Pell
+Role: Cabinet Inventory Keeper
+Hometown: Ordis Vale
+Primary assignment: off-floor cabinets
+Authorized work: cabinet checks, sealed-container transfers, and environmental log review.
+
+
+Tovan Mire
+Role: Custody Controller
+Hometown: Neldra Fold
+Primary assignment: Custody Office
+Authorized work: register approval, movement control decisions, and final reconciliation authorization.
+
+
+Ilyra Nemm
+Role: Outreach Liaison
+Hometown: Serren Glen
+Primary assignment: Grayglass exchange
+Authorized work: research correspondence, educational coordination, and external demonstration scheduling.
+
+
+Dalen Orve
+Role: Release Registrar
+Hometown: Brindle Mere
+Primary assignment: external release counter
+Authorized work: release paperwork review, signature collection, and destination register updates.
+
+
+The directory names are considered sufficient for public identification. Internal records may include additional identifiers to distinguish staff with similar names. Employees must not substitute a first name alone for a full name on any authorization document.
+
+
+PROJECT RESPONSIBILITIES
+
+
+The Thistle Cycle is led by Mira Seln. It reviews historical accession records to identify incomplete chains of custody and ledger entries requiring additional documentation. The lead schedules review work, collects supporting evidence, and forwards unresolved discrepancies to the Custody Office. The lead does not independently change accepted packet totals.
+
+
+The Lantern Audit is led by Miran Seln. It verifies that transfers, inspections, and release requests have passed through the required authorization steps. The audit team can identify a procedural failure even when all physical packets are accounted for.
+
+
+The similar names of these two review leaders have generated misdirected correspondence. Employees should use the full names Mira Seln and Miran Seln and should not assume that a message addressed to the Thistle Cycle is intended for the Lantern Audit.
+
+
+The Red Tag Review is owned by Sova Renn. This review examines whether safety exceptions were identified and escalated correctly. Sova Renn works the dawn shift during routine review weeks. An exception occurring outside that shift must still be documented and routed to the designated duty custodian.
+
+
+The Grayglass exchange is coordinated by Ilyra Nemm. The exchange includes demonstrations of cataloging techniques, sample-label interpretation, and procedures for responding to incomplete supporting records. Its coordinating function is separate from authority to release accession packets.
+
+
+Sovia Renn supervises the demonstration-room schedule and training exercises. Although the two Renn surnames are identical, their responsibilities are not interchangeable. An authorization addressed to Sova Renn cannot be satisfied by the signature of Sovia Renn.
+
+
+WORKING HOURS AND SHIFT RESPONSIBILITY
+
+
+Ordinary facility activities are organized into dawn, central, and closing shifts. These are administrative labels rather than fixed statements about daylight. Actual attendance may vary with planned inspection work and approved educational visits.
+
+
+The dawn shift prepares the daily access board, checks any unresolved overnight alerts, and confirms which storage movements are pending. The central shift conducts scheduled handling activities and ensures that visitors use approved demonstration equipment. The closing shift checks the ledger and records the condition of restricted rooms.
+
+
+A transfer crossing a shift boundary requires a receiving custodian's acknowledgment. Without that acknowledgment, the transfer must remain open in the ledger. The sender may not mark it complete merely because the physical packet has reached its destination.
+
+
+Shift assignments must not be used as evidence of an employee's compensation, contractual status, or seniority. Those subjects are administered separately and are not covered by the public handbook.
+
+
+ACCESS CONTROL
+
+
+Staff may enter only those areas for which their role or a written temporary authorization provides access. Authorized entry does not automatically permit opening a sealed accession packet.
+
+
+Nera Room is designated the primary working store. Nerva Room is designated the reserve store. Every room authorization must state the full name of the intended room. A form containing the shortened name "Ner Room" is invalid because it cannot identify the intended location.
+
+
+If a visitor asks to enter an area not listed on the visit authorization, the duty custodian must deny entry until a revised authorization has been issued. Verbal assurances from a familiar staff member do not substitute for documented permission.
+
+
+The Blue Alcove is a staging area for duplicate envelopes. It is accessible to designated staff during reconciliation periods. Material placed in the Blue Alcove must remain associated with its original location entry until an accepted movement record confirms the transfer.
+
+
+Temporary access keys are issued against a numbered register. Keys must be returned before the responsible custodian signs the closing access statement. No employee may retain a temporary access key for convenience between visits.
+
+
+VISITOR HANDLING POLICY
+
+
+Visitors may handle empty demonstration envelopes and approved trays when a supervisor is present. They may not open original accession packets or remove material from the premises.
+
+
+A visitor may hold a sample tray for no more than twelve minutes before returning it to the supervised work surface. The limit is intended to reduce unrecorded handling and to keep demonstrations moving through the required inspection sequence.
+
+
+The timing begins when the tray leaves the designated work surface. Pausing an explanation or temporarily changing supervisors does not reset the handling period.
+
+
+Visitors must not treat an educational tray as evidence that the Archive possesses a specific accession variety. Demonstration equipment may contain artificial labels, blank packets, or non-accession materials.
+
+
+The supervisor checks each tray before and after use. Damage must be entered in the equipment incident register, even when a damaged tray can be repaired immediately.
+
+
+SEAL AND DISPATCH POLICY
+
+
+The Seal Steward checks seals before dispatch. The title identifies a procedural function, not a separate permanent job classification. The duty can be assigned to a qualified employee who has completed the seal verification exercise.
+
+
+Before any sealed material leaves its assigned location, the Seal Steward checks the packet identifier, closure condition, destination label, and authorization reference. If any element disagrees with the ledger, dispatch must stop.
+
+
+The same principle applies when an apparently minor spelling difference appears on a transfer instruction. Staff are prohibited from assuming that Nera Room and Nerva Room identify the same destination.
+
+
+An envelope that fails the first seal check must be placed in the designated review tray. It may return to the dispatch sequence only after the failure is resolved and the subsequent check is documented.
+
+
+A replacement label must preserve the original accession identifier. Changing the appearance of a label does not create a new accession and does not authorize renumbering for convenience.
+
+
+MOISTURE FLAG POLICY
+
+
+Relative humidity observations are recorded at the scheduled reading points. A reading outside the target band triggers an instrument check and a second observation.
+
+
+A moisture flag is registered when the second verified observation remains outside the authorized band. An initial reading that returns to normal before verification is documented as an instrument observation rather than a confirmed flag.
+
+
+The custodian records the location, instrument identifier, time of verification, and action taken. If a repeated flag indicates an equipment fault, the custodian must contact the safety examiner and note the contact in the environmental log.
+
+
+The humidity targets of Nera Room and Nerva Room are maintained in the current operational report. Staff must not copy one room's target onto the other's record merely because the names are similar.
+
+
+A moisture flag is a procedural classification. It does not, by itself, establish that seed viability has declined or that a packet must be discarded.
+
+
+RIDGE TRANSFER POLICY
+
+
+A ridge transfer is a restricted movement between a working store and a designated elevated holding area. The term refers to the movement class, not to the type of vehicle or the geographical location of a facility.
+
+
+An individual ridge-transfer authorization is valid for a maximum of nine hours. A request still pending after nine hours requires renewed review before any movement may proceed.
+
+
+The nine-hour limit applies even when the physical movement is expected to take less time. It also applies to transfers postponed by a temporary freeze. A postponed authorization cannot remain active indefinitely.
+
+
+The receiving custodian must verify the source identifier, intended destination, transport enclosure number, and authorization period. The releasing custodian then records the approved movement in the ledger.
+
+
+A safety examiner may recommend suspending a movement class. Only an authorized control decision can reopen a movement that was formally frozen.
+
+
+No part of this policy authorizes material to be moved outside the Archive's controlled network without a separate external release record.
+
+
+RECONCILIATION PROCEDURE
+
+
+LRP worksheets are prepared at the beginning of the designated reconciliation period. Each worksheet identifies the room or cabinet group being checked and the ledger interval under review.
+
+
+A reconciliation difference must be described precisely. Terms such as "missing items" or "wrong total" are insufficient unless the supporting record identifies what was expected and what was observed.
+
+
+The first reviewer counts physical packets and records the identifiers of any exceptions. The second reviewer compares the observations against the ledger without altering the first reviewer's notes.
+
+
+When an exception can be resolved by an authorized correction, the original entry must remain visible in the historical record. Staff may attach an explanatory notice, but they may not erase the evidence that an earlier figure was accepted or circulated.
+
+
+The final reconciliation statement must distinguish between an error in transcription and an actual change in physical inventory. Those are different events and may produce similar-looking numerical adjustments.
+
+
+STAFF REVIEW MEETINGS
+
+
+The ordinary staff review meeting is held on the second Tuesday of each month. If the meeting cannot be held on that date, the Custody Office issues a notice identifying the replacement meeting date.
+
+
+The regular agenda covers unresolved access exceptions, transfers awaiting acknowledgment, review findings, and proposed revisions to procedural language.
+
+
+Meeting participants are expected to distinguish decisions from recommendations. A recommendation becomes binding only after it has received the approval required for that subject.
+
+
+Minutes must identify the speaker when remarks are quoted. If a transcription separates a quotation from its attribution because of page or line wrapping, the records team must preserve the attribution in the official copy.
+
+
+DOCUMENT COLOR AND RECORD STATUS
+
+
+The official movement ledger uses amber tabs. The color identifies the accepted ledger series and is not a coding system for the condition of seed packets.
+
+
+Yellow register pages may be used for temporary demonstrations or controlled drafts. They cannot replace an accepted amber ledger entry without formal authorization.
+
+
+Red tags identify material or records awaiting safety review. A red tag does not automatically mean the associated item is damaged.
+
+
+Violet and copper are seal-trial labels. They are not permanent facility classifications and do not authorize a user to infer the room's humidity target.
+
+
+An obsolete form should be retained with its replacement notice when the change affects recorded quantities, dates, or responsibility assignments.
+
+
+DEFINITIONS
+
+
+Accession packet: A sealed envelope containing a measured portion of a documented seed lot.
+
+
+Accepted figure: A quantity approved by the appropriate control process and not subsequently replaced by a valid correction.
+
+
+Custody Office: The organizational function responsible for movement controls, official register approval, and final reconciliation acceptance.
+
+
+Environmental observation: A recorded instrument reading that has not necessarily met the verification condition for a moisture flag.
+
+
+External research release: An authorized movement of accession material outside the controlled Archive network.
+
+
+Formal correction: A dated notice that identifies an earlier recorded fact or figure and explicitly states its replacement.
+
+
+LRP worksheet: The numbered document used to compare physical packet observations with accepted ledger entries.
+
+
+Ridge transfer: A restricted internal movement subject to the authorization and review limit established in this handbook.
+
+
+Temporary sleeve: A reusable protective holder used during inspection, training, or controlled demonstrations.
+
+
+Working store: A designated location in which accession packets may be inspected and handled under the applicable controls.
+
+
+These definitions govern the language of the handbook. They should not be expanded through informal analogies or substituted with different meanings used by unrelated organizations.
+
+
+PRIVACY AND INFORMATION LIMITS
+
+
+The staff directory is intended for operational identification. It is not a complete employment record. The Archive does not publish individual salaries or personal pay grades in this public handbook.
+
+
+Hometown information is included only as a directory field used to distinguish staff records in this fictional organization. It must not be treated as a residential address or as evidence of an employee's current commuting arrangements.
+
+
+Personal contact information is maintained in a separate administrative system. The absence of such information from a public record does not grant permission to reconstruct it through assumptions.
+
+
+Research visitors may request approved catalog descriptions, but they are not entitled to restricted source-site records solely because they have been granted access to demonstrations.
+
+
+FINAL STAFF INSTRUCTION
+
+
+Every employee must preserve the distinction between an observed fact, an authorized decision, a provisional figure, and a formally corrected figure.
+
+
+If a question cannot be answered from the approved record, the employee must state that the information is unavailable rather than reconstruct a plausible answer from surrounding facts.
+
+
+The same rule applies when two employees have nearly identical names. An accurate record must identify the correct person, role, and authorization without relying on familiar spelling or assumed responsibility.
+
+
+End of staff and policy handbook.

@@ -543,6 +543,15 @@ UNCERTAINTY_PHRASES = (
     "does not include",
     "do not include",
     "does not state",
+    "do not state",
+    "does not specify",
+    "do not specify",
+    "does not identify",
+    "do not identify",
+    "does not provide",
+    "do not provide",
+    "does not give",
+    "do not give",
     "not listed",
     "not mentioned",
     "not specified",
@@ -697,9 +706,30 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|\n+")
 _EXPLICIT_ABSENCE = re.compile(
     r"\b(not (stated|recorded|listed|included|published|disclosed|available|provided|known|"
     r"given|specified|reported)|outside (of )?(the |this )?scope|unknown|withheld|redacted|"
-    r"confidential|undisclosed|no record)\b",
+    r"confidential|undisclosed|no record|"
+    r"(do|does|did) not (contain|publish|include|record|list|disclose|report|reproduce|cover))\b",
     re.IGNORECASE,
 )
+
+
+def stated_absence_evidence(goal: str, evidence: Sequence[EvidenceReference]) -> list[EvidenceReference]:
+    """Retrieved passages that themselves say what the question asks for is not there.
+
+    "The Archive does not publish individual salaries or personal pay grades" answers
+    "What pay grade was assigned to X?" as fully as a number would: it is the source for
+    an answer saying the documents do not give it.
+    """
+
+    goal_tokens = _concrete_tokens(goal) - _FRAMING_TOKENS
+    return [
+        item
+        for item in evidence
+        if any(
+            (_EXPLICIT_ABSENCE.search(sentence) or contains_uncertainty_statement(sentence))
+            and len((_concrete_tokens(sentence) - _FRAMING_TOKENS) & goal_tokens) >= 2
+            for sentence in _SENTENCE_SPLIT.split(item.excerpt or "")
+        )
+    ]
 
 
 def unverified_absence(goal: str, answer: str, evidence: Sequence[EvidenceReference]) -> str | None:
@@ -724,7 +754,8 @@ def unverified_absence(goal: str, answer: str, evidence: Sequence[EvidenceRefere
         tokens = _concrete_tokens(sentence) - _FRAMING_TOKENS
         if len(tokens & goal_tokens) < 2:
             continue  # not about what was asked
-        if any(len(tokens & passage) >= 2 for passage in absence_passages):
+        # Shared words must be words of the question: "does not" is in every such sentence.
+        if any(len(tokens & goal_tokens & passage) >= 2 for passage in absence_passages):
             continue  # the document itself says it is missing
         return " ".join(sentence.split())
     return None
@@ -828,6 +859,41 @@ def _word_numbers(text: str) -> set[str]:
         else:
             values.add(str(_UNITS.index(single.casefold())))
     return {value for value in values if len(value) >= 2}
+
+
+_ASKS_FOR_TOTAL = re.compile(r"\b(total|combined|altogether|in all|overall|sum)\b", re.IGNORECASE)
+
+
+def unfinished_total(goal: str, answer: str) -> list[str] | None:
+    """The parts an answer lists when the question asked for their total, if it stops there.
+
+    "What is the total tray capacity when all crates are full?" answered "twelve crates,
+    each holding eighteen trays" is correct about the parts but never gives 216. An answer
+    whose numbers include one the others add or multiply up to has finished the sum.
+    """
+
+    if not _ASKS_FOR_TOTAL.search(goal):
+        return None
+    prose = _strip_rendered_citations(answer)
+    if re.search(r"\b(hundred|thousand|million|billion)\b", prose, re.IGNORECASE):
+        return None  # "two hundred sixteen": a total in words this check cannot read
+    given = {_canonical_number(n) for n in _numbers_in_text(goal)} | _word_numbers(goal)
+    numbers = list(
+        dict.fromkeys(
+            [_canonical_number(n) for n in _numbers_in_text(prose)] + sorted(_word_numbers(prose))
+        )
+    )
+    numbers = [n for n in numbers if n not in given]
+    if len(numbers) < 2:
+        return None
+    for index, number in enumerate(numbers):
+        if _recomputed(number, numbers[:index] + numbers[index + 1 :]):
+            return None
+    return numbers
+
+
+def _canonical_number(value: Decimal) -> str:
+    return format(value, "f").rstrip("0").rstrip(".") if "." in format(value, "f") else format(value, "f")
 
 
 def _recomputed(target: str, operands: list[str]) -> bool:

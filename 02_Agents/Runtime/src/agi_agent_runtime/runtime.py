@@ -48,6 +48,8 @@ from agi_evaluation import (
     EvaluationExpectations,
     RuleBasedEvaluator,
     contains_uncertainty_statement,
+    stated_absence_evidence,
+    unfinished_total,
     unverified_absence,
 )
 
@@ -742,23 +744,42 @@ class AgentRuntime:
         state.add_model_call(usage, telemetry)
         result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
         state.response_requirement_results.append(result)
-        bridged = await self._bridge_search(state)
-        if bridged and self._calls_left(state) >= 1:
-            # The answer named someone the question only described ("the person in charge
-            # of the Lantern Audit"); their own record was searched, so answer again and say
-            # why, or the model repeats the name.
+        bridged = await self._bridge_answer(state)
+        if bridged is not None:
+            draft, result = bridged
+            state.response_requirement_results[-1] = result
+        parts = unfinished_total(state.request.goal, state.answer_text) if result.valid else None
+        if parts and self._calls_left(state) >= 1:
+            # The answer lists the figures but stops before adding them up.
             note = (
-                f"Your previous answer named {' and '.join(bridged)}. The question asks for a detail "
-                "about that person or thing (for example a title, role, place or number), not for "
-                "the name itself. New evidence about them has been added: answer exactly what the "
-                "question asks, citing that evidence."
+                f"Your previous answer gave the figures {', '.join(parts)} but the question asks "
+                "for the total. State the total and show the calculation from the cited figures "
+                "(for example '3 x 40 = 120'), citing the evidence for each figure."
             )
-            draft, usage, telemetry = await self._readable_model_answer(
-                state, phase="answer_bridge", note=note
+            previous = (
+                state.answer_draft,
+                state.answer_source,
+                state.answer_text,
+                state.citations,
+                state.response_requirement_result,
+            )
+            retry, usage, telemetry = await self._readable_model_answer(
+                state, phase="answer_total", note=note
             )
             state.add_model_call(usage, telemetry)
-            result = self._apply_readable_answer(state, draft, AnswerSource.MODEL)
-            state.response_requirement_results[-1] = result
+            retried = self._apply_readable_answer(state, retry, AnswerSource.MODEL)
+            if retried.valid:
+                draft, result = retry, retried
+                state.response_requirement_results[-1] = result
+            else:
+                # A finished total that fails its checks is no better than the valid parts.
+                (
+                    state.answer_draft,
+                    state.answer_source,
+                    state.answer_text,
+                    state.citations,
+                    state.response_requirement_result,
+                ) = previous
         if (
             state.requirements.requires_grounding
             and self._can_follow_up(state)
@@ -801,6 +822,12 @@ class AgentRuntime:
                     state, draft, AnswerSource.MODEL_CORRECTION, correction_attempted=True
                 )
             state.response_requirement_results.append(result)
+            if result.valid and _halfway_answer(state.request.goal, state.answer_text):
+                # The repair produced the first step only (the person, not their title).
+                bridged = await self._bridge_answer(state, correction_attempted=True)
+                if bridged is not None and bridged[1].valid:
+                    draft, result = bridged
+                    state.response_requirement_results[-1] = result
         if not result.valid and state.evidence and _can_use_fallback_response(result):
             draft = _fallback_answer_draft(
                 goal=state.request.goal,
@@ -836,6 +863,48 @@ class AgentRuntime:
                 )
             )
 
+    async def _bridge_answer(
+        self, state: _RunState, *, correction_attempted: bool = False
+    ) -> tuple[AnswerDraft | None, ResponseRequirementResult] | None:
+        """Second step of a two-step question: the new answer and its result, if one was made."""
+
+        bridged = await self._bridge_search(state)
+        if not bridged or self._calls_left(state) < 1:
+            return None
+        # The answer named someone the question only described ("the person in charge of
+        # the Lantern Audit"); say why it is asked again, or the model repeats the name.
+        note = (
+            f"Your previous answer named {' and '.join(bridged)}. The question asks for a detail "
+            "about that person or thing (for example a title, role, place or number), not for "
+            "the name itself. The evidence includes their own record: answer exactly what the "
+            "question asks, citing that evidence."
+        )
+        previous = (
+            state.answer_draft,
+            state.answer_source,
+            state.answer_text,
+            state.citations,
+            state.response_requirement_result,
+        )
+        draft, usage, telemetry = await self._readable_model_answer(
+            state, phase="answer_bridge", note=note
+        )
+        state.add_model_call(usage, telemetry)
+        source = AnswerSource.MODEL_CORRECTION if correction_attempted else AnswerSource.MODEL
+        result = self._apply_readable_answer(
+            state, draft, source, correction_attempted=correction_attempted
+        )
+        if correction_attempted and not result.valid:
+            # Keep the valid repaired answer rather than trade it for an invalid one.
+            (
+                state.answer_draft,
+                state.answer_source,
+                state.answer_text,
+                state.citations,
+                state.response_requirement_result,
+            ) = previous
+        return draft, result
+
     async def _bridge_search(self, state: _RunState) -> list[str]:
         """Search for a person the draft answer introduced; the names, if new evidence was found.
 
@@ -870,8 +939,11 @@ class AgentRuntime:
             for name in dict.fromkeys(_NAME.findall(_strip_citation_labels(state.answer_text)))
             if not all(word.casefold() in goal_folded for word in name.split())
         ][: max(0, min(2, slots))]
+        halfway = _halfway_answer(goal, state.answer_text)
         if not names:
-            return []
+            # No tool slot left, but an answer that stops at the person still deserves the
+            # second step if the evidence about them is already here.
+            return halfway[0] if halfway else []
         asked = [word for word in _bridge_terms(goal)]
         searched = {
             " ".join(str(request.arguments.get("query", "")).split()).casefold()
@@ -890,7 +962,7 @@ class AgentRuntime:
                     ToolCallDraft(tool_name=HOST_RETRIEVAL_TOOL, arguments={"query": query}, purpose="host_bridge_search")
                 )
         if not drafts:
-            return []
+            return halfway[0] if halfway else []
 
         def content(items: list[EvidenceReference]) -> set[tuple[str, str | None, str | None]]:
             return {(item.source_id, item.locator, item.excerpt) for item in items}
@@ -904,7 +976,9 @@ class AgentRuntime:
                 "queries": [draft.arguments["query"] for draft in drafts],
             }
         )
-        return names if content(state.evidence) - before else []
+        # Re-answer when the search found something new, or when the answer stopped at the
+        # person: their record may already have been retrieved, unread.
+        return names if content(state.evidence) - before or halfway else []
 
     async def _readable_model_answer(
         self,
@@ -1037,6 +1111,24 @@ class AgentRuntime:
         requested_ids.extend(
             evidence_id for claim in draft.claims for evidence_id in claim.evidence_ids
         )
+        if (
+            not requested_ids
+            and source != AnswerSource.HOST_FALLBACK
+            and state.requirements.requires_citations
+            and contains_uncertainty_statement(state.answer_text)
+        ):
+            # "The documents do not give X" with no citation, while a retrieved passage
+            # itself says X is not published: that passage is the answer's source.
+            stated = stated_absence_evidence(state.request.goal, state.evidence)[:2]
+            if stated:
+                draft = draft.model_copy(
+                    update={"cited_evidence_ids": [item.evidence_id for item in stated]}
+                )
+                state.answer_draft = draft
+                labels = " ".join(f"[{item.source_path} ({item.locator or 'source'})]" for item in stated)
+                state.answer_text = f"{state.answer_text} {labels}"
+                requested_ids = list(draft.cited_evidence_ids)
+                state.host_actions.append({"action": "cited_stated_absence", "count": len(stated)})
         state.citations, citation_errors = self._resolve_citations(requested_ids, state.evidence)
         state.errors.extend(citation_errors)
         # A claim that only states missing information is not a factual claim to cite.
@@ -1211,6 +1303,56 @@ class AgentRuntime:
                                 "The answer says the requested information is missing, but no "
                                 "retrieved passage says so; a search can miss a passage. "
                                 f"Statement: {absence[:200]}"
+                            ),
+                        ),
+                    ],
+                }
+            )
+        # A cited name is not an answer to "what position does the person who ... hold".
+        halfway = (
+            _halfway_answer(state.request.goal, state.answer_text)
+            if evaluation.verdict == EvaluationVerdict.PASSED and asks_documents
+            else None
+        )
+        parts = (
+            unfinished_total(state.request.goal, state.answer_text)
+            if evaluation.verdict == EvaluationVerdict.PASSED and asks_documents
+            else None
+        )
+        if parts is not None:
+            evaluation = evaluation.model_copy(
+                update={
+                    "verdict": EvaluationVerdict.PARTIAL,
+                    "rule_based_checks": [
+                        *evaluation.rule_based_checks,
+                        RuleBasedCheck(
+                            name="answers_the_question",
+                            passed=False,
+                            score=0.0,
+                            weight=0.0,
+                            details=(
+                                f"The question asks for a total; the answer gives the figures "
+                                f"{', '.join(parts)} but no total worked out from them."
+                            ),
+                        ),
+                    ],
+                }
+            )
+        if halfway is not None:
+            names, detail = halfway
+            evaluation = evaluation.model_copy(
+                update={
+                    "verdict": EvaluationVerdict.PARTIAL,
+                    "rule_based_checks": [
+                        *evaluation.rule_based_checks,
+                        RuleBasedCheck(
+                            name="answers_the_question",
+                            passed=False,
+                            score=0.0,
+                            weight=0.0,
+                            details=(
+                                f"The question asks for a detail ({' '.join(detail)}) about someone "
+                                f"it describes; the answer names {names[0]} but does not state it."
                             ),
                         ),
                     ],
@@ -2418,9 +2560,22 @@ def _correction_advice(messages: list[str]) -> str:
         "cited evidence says, with the evidence_id that supports each claim. Do not mention "
         "file names, line numbers or how you searched."
     )
-    if named:
-        return f"Remove or correct these terms, which the cited evidence does not support: {', '.join(dict.fromkeys(named))}. {keep}"
-    return keep
+    numbers = [term for term in dict.fromkeys(named) if re.fullmatch(r"[\d,.%$]+", term)]
+    words = [term for term in dict.fromkeys(named) if term not in numbers]
+    advice = []
+    if words:
+        advice.append(
+            f"Remove or correct these terms, which the cited evidence does not support: {', '.join(words)}."
+        )
+    if numbers:
+        # A total the model added up itself is right more often than not; showing the sum
+        # from the cited figures lets the check recompute it instead of rejecting it.
+        advice.append(
+            f"These numbers are not in the cited evidence: {', '.join(numbers)}. If you "
+            "calculated one, write the calculation from the cited figures (for example "
+            "'12 + 30 + 8 = 50'); otherwise remove or correct it."
+        )
+    return " ".join([*advice, keep])
 
 
 def _is_empty_draft(draft: AnswerDraft) -> bool:
@@ -2476,6 +2631,65 @@ def _asks_for_a_person(goal: str) -> bool:
 
 def _strip_citation_labels(text: str) -> str:
     return re.sub(r"\[[^\]]*\]", " ", text)
+
+
+# "What formal position is held by ...", "What is the official job title of ...",
+# "Which hometown is associated with ...": the words naming the detail asked for.
+_ASKED_DETAIL = re.compile(
+    r"^(?:what|which)\s+(?:(?:is|was|are|were)\s+)?(?:the\s+|a\s+|an\s+)?(.+?)\s+"
+    r"(?:is|was|are|were|of|for|does|did|do|held|associated|applies|apply|assigned|belongs|"
+    r"given|listed|connected|linked|used)\b",
+    re.IGNORECASE,
+)
+# Words a position may be called by; an answer using any of them names the detail.
+_POSITION_WORDS = frozenset("position title role job post rank occupation designation".split())
+
+
+def _asked_detail(goal: str) -> list[str]:
+    match = _ASKED_DETAIL.match(" ".join(goal.split()))
+    if not match:
+        return []
+    words = [w for w in re.findall(r"[a-z]+", match.group(1).casefold()) if len(w) > 2]
+    return [w for w in words if w not in _BRIDGE_STOPWORDS][:4]
+
+
+def _halfway_answer(goal: str, answer: str) -> tuple[list[str], list[str]] | None:
+    """(names, detail words) when the answer stops at the first step of a two-step question.
+
+    "What formal position is held by the person responsible for the Red Tag Review?"
+    answered "The person responsible is Sova Renn." names who, not what was asked. Such
+    an answer names one person the question did not, no number, and never uses a word for
+    the detail asked about.
+    """
+
+    goal = " ".join(goal.split())
+    detail = _asked_detail(goal)
+    if (
+        not detail
+        or _asks_for_a_person(goal)
+        or not _DESCRIBES_SOMEONE.search(" ".join(goal.split()[1:]))
+    ):
+        return None
+    prose = _strip_citation_labels(answer)
+    goal_folded = goal.casefold()
+    names = [
+        name
+        for name in dict.fromkeys(_NAME.findall(prose))
+        if not all(word.casefold() in goal_folded for word in name.split())
+    ]
+    if len(names) != 1:
+        return None
+    # A bare "Marrow Fen" is the detail itself; a halfway answer is a sentence about who
+    # matches the description ("The person coordinating the exchange is Ilyra Nemm").
+    if len(re.findall(r"[A-Za-z]+", prose.replace(names[0], " "))) < 4:
+        return None
+    if any(number not in goal for number in re.findall(r"\d[\d,.]*", prose)):
+        return None
+    words = {w[:5] for w in re.findall(r"[a-z]+", prose.casefold())}
+    wanted = set(detail) | (_POSITION_WORDS if _POSITION_WORDS & set(detail) else set())
+    if any(word[:5] in words for word in wanted):
+        return None
+    return names, detail
 
 
 def _bridge_terms(goal: str) -> list[str]:

@@ -6,7 +6,9 @@ from .evaluator import (
     RuleBasedEvaluator,
     canonical_dates,
     contains_uncertainty_statement,
+    stated_absence_evidence,
     strip_uncertainty_sentences,
+    unfinished_total,
     unverified_absence,
 )
 
@@ -18,6 +20,8 @@ __all__ = [
     "RuleBasedEvaluator",
     "canonical_dates",
     "contains_uncertainty_statement",
+    "stated_absence_evidence",
     "strip_uncertainty_sentences",
+    "unfinished_total",
     "unverified_absence",
 ]

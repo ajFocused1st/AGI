@@ -1,0 +1,461 @@
+VEYRA SEED ARCHIVE
+MEETING MINUTES AND FORMAL NOTICES
+Records covering January 2025 through February 2026
+Reference: VSA-MIN-25-26
+Compilation status: Certified record
+
+
+RECORDS OFFICE INTRODUCTION
+
+
+This compilation contains selected staff meeting minutes, control notices, register decisions, and corrections affecting the operational record of the Veyra Seed Archive.
+
+
+The compilation preserves the order in which decisions were made and notices were issued. An earlier figure may therefore appear even when it was subsequently found to be incorrect. Readers must distinguish the historical statement from its accepted replacement.
+
+
+Minutes record the position or decision expressed at a meeting. They do not automatically establish that every proposed action was approved. A formal correction, by contrast, replaces the specific earlier information identified in its text when issued by the proper authority.
+
+
+Staff comments have been retained as spoken or transcribed, including occasional unusual line breaks. The records office has not silently joined all divided words because some source transcriptions were required to remain faithful to the approved meeting copy.
+
+
+JANUARY CONTROL MEETING
+
+
+Meeting date: January 14, 2025
+Location: Custody Office meeting room
+Chair: Tovan Mire
+Recorder: Dalen Orve
+Status: Approved minutes
+
+
+The meeting opened with a review of outstanding movement records from the preceding year. Tovan Mire instructed the records team to distinguish incomplete entries from actual inventory losses.
+
+
+Dalen Orve reported that several release forms had reached the records counter without a complete destination identifier. The forms had been set aside pending confirmation. No packets associated with those forms were authorized for external release during the meeting.
+
+
+The members approved a standard notation for unresolved destination problems. The notation records that the release is pending without assigning blame or implying that a packet has left the Archive.
+
+
+The chair also required staff to preserve obsolete forms when they are replaced. Destroying an obsolete form would make it harder to establish why a later corrected entry differs from the earlier record.
+
+
+Mira Seln recommended additional historical ledger checks. The meeting accepted the recommendation and assigned the work to the established Thistle Cycle. The recommendation did not alter the accepted inventory total.
+
+
+Miran Seln requested that the review team maintain a separate list of authorization sequence failures. The meeting agreed that such failures should be tracked independently from physical counting discrepancies.
+
+
+FEBRUARY STORAGE REVIEW
+
+
+Meeting date: February 11, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The February review considered the storage-room names and the possibility that staff might transpose them while writing transfer instructions.
+
+
+One incident involved a draft form naming Nerva Room in the destination field but carrying a handwritten reference to the Nera Room working store. No movement took place. The duty custodian returned the form for clarification.
+
+
+The committee approved a requirement that all internal movement instructions use the complete storage-room names. A shortened spelling would not be accepted, even if the staff member preparing the form believed the intended room was obvious.
+
+
+Elian Voss confirmed that the primary working store maintained its separate room log. Elia Voss confirmed that the reserve store maintained its own log and would not merge its records with those of the working store.
+
+
+During the discussion, the recorder captured the following statement:
+
+
+"We do not protect a collection by making its
+numbers look tidy. We protect it by showing
+exactly where each number came from, and by
+leaving the trail visible when we discover
+that an earlier number was wrong."
+
+
+Mira Seln
+Records Curator
+
+
+The quotation was entered as a single attributed remark even though the speaker's name and title follow the quoted text on separate lines.
+
+
+The chair directed that the remark be retained in the training copy. It was considered relevant to the Archive's practice of preserving superseded figures rather than silently replacing them.
+
+
+MARCH RELEASE REVIEW
+
+
+Meeting date: March 7, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+Document: March release approval statement
+
+
+The March review examined release records created during the first two months of the year. The committee checked whether each release contained a destination reference and a dated receiving acknowledgment.
+
+
+Dalen Orve signed the March release approval statement after the committee accepted the completed supporting records. The signature confirmed that the required documentation was present; it did not certify the research value of the released material.
+
+
+The committee instructed staff to continue distinguishing an external research release from an internal movement between controlled rooms.
+
+
+Several members proposed redesigning the receiving acknowledgment form. The proposal was referred for later consideration rather than immediately adopted.
+
+
+The chair emphasized that a release record cannot be completed by copying a destination from an earlier transaction. Each movement requires its own confirmed destination.
+
+
+APRIL INTERVIEW REVIEW
+
+
+Meeting date: April 8, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The Archive conducted an internal process interview concerning the handling of incomplete access notices. The interview was chaired by Rovan Pell, who was selected for familiarity with the cabinet inventory process.
+
+
+The interview examined how employees interpret a notice when the room name is complete but the authorization period is missing.
+
+
+Participants were asked to explain what action they would take before allowing a transfer. The committee considered a request for clarification to be the appropriate response to a missing authorization period.
+
+
+No personnel disciplinary finding was made in this review. The exercise focused on the wording of procedural forms rather than the behavior of a named employee.
+
+
+The committee recommended adding a practical example to staff training. The recommendation was accepted for curriculum development but did not revise the standing transfer policy.
+
+
+JUNE MOVEMENT NOTICE
+
+
+Notice issued: June 18, 2025
+Administrative identifier: MOVE-25-0618
+Issuing authority: Custody Office
+
+
+A temporary freeze on ridge transfers took effect on 2025-06-18 after a receiving-label mismatch was identified.
+
+
+The freeze applied to new and pending movements in the designated restricted class. It did not prevent ordinary inspections, emergency safety action, or educational sessions involving only demonstration materials.
+
+
+The notice instructed custodians to retain requests that could not be completed. They were not to record a transfer as canceled merely because processing was temporarily suspended.
+
+
+The committee also instructed reviewers to examine the recorded authorization periods for pending transfers. Authorization limits continued to apply while the freeze was in force.
+
+
+The notice expressly avoided drawing conclusions about missing seed material. A label mismatch was sufficient reason for a preventive freeze but did not establish a physical loss.
+
+
+Following the notice, staff received a short reminder about accurately copying room names. The reminder used the two principal storage rooms as examples because the names differ by only one additional letter.
+
+
+JULY EQUIPMENT MEETING
+
+
+Meeting date: July 8, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The equipment meeting considered repeated disagreement between environmental readings and handwritten inspection notes. Members agreed that instrument observations should remain distinct from confirmed moisture flags.
+
+
+The team reviewed the two-stage verification procedure and recommended additional staff practice on documenting second observations.
+
+
+Sova Renn described the need to avoid combining all out-of-band readings into a single count. A first observation might require attention but would not become a moisture flag unless the verification condition had been met.
+
+
+The meeting also considered how a broken line in a maintenance transcription could create misleading search results. One example contained the word calibra
+tion split across two lines in the original note.
+
+
+The committee directed the records office to preserve original transcriptions while adding explanatory notes where necessary. It did not authorize changing accepted numerical records solely to improve text search.
+
+
+A separate equipment recommendation concerned demonstration crates. Members agreed to maintain consistent tray configurations so that volunteers could check a crate without needing a different packing diagram for every exercise.
+
+
+SEPTEMBER REGISTER DECISION
+
+
+Meeting date: September 9, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The committee reviewed the use of temporary register colors during outreach demonstrations. Staff had reported occasional confusion between the yellow draft register and the accepted amber ledger.
+
+
+The yellow register was approved for controlled training exercises only. It would not be used to replace the accepted movement ledger.
+
+
+The committee confirmed that amber would remain the official ledger tab color. A different color could be used for educational copies when the copy was clearly identified as a nonauthoritative record.
+
+
+Dalen Orve was instructed to retain the reviewed drafts as supporting evidence for the register decision. The training team was instructed to explain the difference between a register's appearance and its authorization status.
+
+
+The meeting approved a revised example showing a correctly completed movement record. The example used fictional packet identifiers not present in the live ledger.
+
+
+OCTOBER OPERATIONS MEETING
+
+
+Meeting date: October 14, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The October meeting reviewed the progress of the Grayglass exchange and the results of the two storage-room seal trials.
+
+
+The committee confirmed that Nera Room had completed the copper seal trial and Nerva Room had completed the violet seal trial. Their results would remain in separate supporting records because the procedures had not been designed as a single combined experiment.
+
+
+Ilyra Nemm reported that the Grayglass exchange had generated requests for clearer explanations of ledger reconciliation. Several visiting participants had confused a temporary sleeve with an accession packet.
+
+
+The team agreed to prepare a short demonstration explaining how one seed lot could generate multiple packets and how temporary educational materials remain outside the accepted seed inventory.
+
+
+The committee also discussed whether an informal exchange event should be allowed to produce a permanent accession. Members agreed that an exchange alone was insufficient. Any proposed acquisition must still pass the normal acceptance process.
+
+
+No change was made to the external research release requirements.
+
+
+NOVEMBER OBSERVER NOTICE
+
+
+Notice date: 2025-11-09
+Identifier: OBS-25-1109
+Prepared by: Dalen Orve
+Initial status: Provisional
+
+
+The observer register originally listed 302 approved observer vouchers for the reporting period. The figure was released as provisional because the final reconciliation of duplicate voucher entries had not yet been completed.
+
+
+An observer voucher authorizes attendance at a controlled demonstration. It is not a seed accession, and it does not establish how many unique people attended all Archive events.
+
+
+The provisional figure was carried into the preliminary meeting packet. It was not intended to become permanent until the supporting registration records were checked.
+
+
+The notice instructed the records team to complete the duplicate-entry review before certifying the final annual observer total.
+
+
+Observers who attended several events could have multiple vouchers, so the count should not be interpreted as a count of distinct visitors.
+
+
+DECEMBER PRELIMINARY YEAR-END MEETING
+
+
+Meeting date: December 16, 2025
+Chair: Tovan Mire
+Recorder: Dalen Orve
+Status: Preliminary record
+
+
+The committee reviewed the near-final operational figures and the remaining exceptions awaiting reconciliation.
+
+
+The preliminary moisture summary listed 94 confirmed moisture flags for the reporting year. The figure was entered into the draft annual control worksheet, subject to final verification of repeated observations.
+
+
+The preliminary west yard dispatch log listed 1,208 completed returns. A completed return meant that the relevant handling enclosure had been received, checked, and acknowledged in the designated register.
+
+
+Members were reminded that a dispatch return is not the same event as an accession packet moving into permanent storage.
+
+
+The committee recognized that the preliminary quantities could be revised if the final supporting records identified duplicate entries or an incorrect classification.
+
+
+A separate discussion concerned documentation of the Thistle Cycle and Lantern Audit. Both review programs were instructed to preserve the distinction between findings that required procedural correction and findings that actually changed accepted quantities.
+
+
+The chair directed that all final numerical changes be issued as explicit replacement notices. A handwritten amendment in a draft spreadsheet would not be enough to establish the final figure.
+
+
+JANUARY RECONCILIATION REVIEW
+
+
+Meeting date: January 13, 2026
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The committee examined the year-end moisture summary, the west yard dispatch log, and the observer registration ledger.
+
+
+Reviewers discovered that some preliminary entries had been classified before supporting documents were fully reconciled.
+
+
+The committee agreed that the original preliminary figures should remain visible and that each accepted replacement should identify the earlier number, the revised number, and the reason for change.
+
+
+The committee further agreed that the corrected values would govern retrospective questions about the 2025 reporting year. No new physical activity was being added merely because the correction was issued during 2026.
+
+
+The minutes assigned responsibility for issuing formal notices to the Custody Office.
+
+
+FORMAL CORRECTION NOTICE 1
+Issued: January 15, 2026
+Reference: COR-26-01
+Subject: Confirmed moisture flags
+Status: Final replacement
+
+
+The preliminary figure of 94 confirmed moisture flags, recorded in the December 16, 2025 meeting minutes, is withdrawn and replaced by 89 confirmed moisture flags for the 2025 reporting year.
+
+
+The correction follows the identification of five repeated observations that had been counted twice during preparation of the preliminary worksheet.
+
+
+The replacement figure of 89 is the accepted final count. The earlier figure of 94 must be retained as a superseded historical entry and must not be reported as the current total.
+
+
+This notice changes the accepted moisture-flag count only. It does not establish that five physical packets were removed, recovered, or destroyed.
+
+
+Authorized by: Tovan Mire, Custody Controller.
+
+
+FORMAL CORRECTION NOTICE 2
+Issued: January 20, 2026
+Reference: COR-26-02
+Subject: West yard dispatch returns
+Status: Final replacement
+
+
+The preliminary west yard dispatch-return figure of 1,208, recorded in the December 16, 2025 meeting minutes, is withdrawn and replaced by 1,184 completed returns for 2025.
+
+
+The records team identified twenty-four entries that described preparation for return rather than completed receipt. Those entries remain in the activity log but are excluded from the completed-return count.
+
+
+The accepted final figure is 1,184. The superseded figure of 1,208 may be cited only when describing the preliminary record or the correction history.
+
+
+The committee emphasized that a corrected movement count does not necessarily indicate a change in the number of sealed accession packets held at year-end.
+
+
+Authorized by: Tovan Mire, Custody Controller.
+
+
+FEBRUARY OBSERVER REVIEW
+
+
+Meeting date: February 10, 2026
+Chair: Tovan Mire
+Recorder: Dalen Orve
+
+
+The committee reviewed the provisional observer-voucher figure from the November notice.
+
+
+The records team had completed the reconciliation of voucher identifiers and identified valid entries that were omitted from the provisional total. Those entries had been recorded in an auxiliary demonstration register.
+
+
+The committee accepted a formal replacement of the provisional observer total. It requested that the notice make clear the distinction between approved observer vouchers and unique visitors.
+
+
+The records office was instructed to preserve the November notice together with the corrected record so that future reviewers could establish which number was current.
+
+
+FORMAL CORRECTION NOTICE 3
+Issued: February 12, 2026
+Reference: COR-26-03
+Subject: Approved observer vouchers
+Status: Final replacement
+
+
+The provisional figure of 302 approved observer vouchers, published in notice OBS-25-1109 dated November 9, 2025, is withdrawn and replaced by 317 approved observer vouchers for the 2025 reporting period.
+
+
+The correction incorporates fifteen valid vouchers that had been recorded in the auxiliary demonstration register but omitted from the provisional compilation.
+
+
+The final accepted count is 317 vouchers. The earlier count of 302 is superseded and must not be used as the current figure.
+
+
+The corrected quantity does not provide a count of unique observers because an individual could receive more than one approved voucher.
+
+
+Authorized by: Tovan Mire, Custody Controller.
+
+
+ADDITIONAL NOTICE ON RECORD INTERPRETATION
+
+
+Notice issued: February 17, 2026
+Subject: Answering inquiries from compiled records
+
+
+The records office received questions about whether the corrected quantities should be inserted into older documents without any indication that an amendment had occurred.
+
+
+The Custody Office directed that original copies remain unchanged. The corrections are maintained as separate dated notices and should be consulted whenever a question concerns the accepted final value.
+
+
+A question about what the preliminary meeting originally reported should be answered using the preliminary meeting record. A question about the final accepted count should be answered using the applicable formal correction.
+
+
+The distinction is especially important for moisture flags, dispatch returns, and observer vouchers. These quantities describe different activities and must not be combined merely because they appear in the same compilation.
+
+
+Staff should not infer that an item was physically lost simply because a numerical figure was revised downward. Similarly, a revised upward figure does not necessarily indicate new physical acquisitions.
+
+
+The office reaffirmed that the three principal public records serve different functions. The annual operations report describes activities, the handbook defines procedural duties, and the meeting notices establish decisions and formal corrections.
+
+
+RECORDS RETENTION AND PUBLIC LIMITS
+
+
+The Archive retains approved minutes, provisional reports, formal notices, and the supporting evidence associated with a correction.
+
+
+When an earlier figure has been superseded, the older document is not destroyed. Its preservation allows a later reviewer to reconstruct the sequence of reporting and acceptance.
+
+
+The public minutes do not contain individual salaries, personal pay grades, or private employment agreements. Those records are withheld from this document set.
+
+
+The compilation does not authorize an estimate of undisclosed compensation from an employee's title, duties, hometown, or participation in a meeting.
+
+
+The same restriction applies to other facts that have not been recorded. The minutes must not be treated as evidence for events or personal details that they do not describe.
+
+
+CERTIFICATION OF THE COMPILED MINUTES
+
+
+The Custody Office certifies that the listed meetings and notices reflect the accepted administrative record for the periods identified.
+
+
+The corrections issued on January 15, January 20, and February 12, 2026 remain attached to the relevant earlier entries. Their replacement figures take precedence whenever a reader asks for the final accepted 2025 values.
+
+
+The certification does not convert provisional figures into final figures and does not extend the scope of the records to subjects that the Archive has excluded from public reporting.
+
+
+The responsibility for interpreting any conflicting entry rests with the reader applying the stated correction and authorization rules, not with assumptions drawn from the order in which individual pages happen to appear.
+
+
+End of compiled meeting minutes and notices.

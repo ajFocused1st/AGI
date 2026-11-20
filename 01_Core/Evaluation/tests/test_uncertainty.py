@@ -411,6 +411,51 @@ class UnverifiedAbsenceTests(unittest.TestCase):
     def test_a_plain_answer_has_nothing_to_verify(self) -> None:
         self.assertIsNone(self._absence("Who owns Atlas?", "Mina Chen owns the Atlas review.", "x"))
 
+    def test_a_document_saying_it_does_not_publish_something_verifies_its_absence(self) -> None:
+        goal = "What personal pay grade was assigned to Tovan Mire?"
+        answer = "The documents do not state the personal pay grade assigned to Tovan Mire."
+        stated = "The Archive does not publish individual salaries or personal pay grades."
+        self.assertIsNone(self._absence(goal, answer, stated))
+
+    def test_an_absence_about_something_else_does_not_confirm_one(self) -> None:
+        # Live Veyra run: "does not publish ... coordinates" confirmed a wrong "not found"
+        # answer about monitored trips because both sentences contain "does not".
+        goal = "How many monitored trips were completed on the western route?"
+        answer = "The available evidence does not contain information about monitored trips completed on a western route."
+        other = "The Archive does not publish the precise collection coordinates of sensitive source sites."
+        self.assertIsNotNone(self._absence(goal, answer, other))
+
+    def test_a_total_answered_with_only_its_parts_is_unfinished(self) -> None:
+        from agi_evaluation import unfinished_total
+
+        goal = "What is the total tray capacity of the cache when all crates are full?"
+        self.assertEqual(
+            unfinished_total(goal, "The cache contains twelve crates, each holding eighteen trays."), ["12", "18"]
+        )
+        self.assertIsNone(unfinished_total(goal, "Twelve crates of eighteen trays: 12 x 18 = 216."))
+        self.assertIsNone(unfinished_total(goal, "The total is two hundred sixteen trays."))
+        self.assertIsNone(unfinished_total(goal, "The capacity is 216 trays."))
+        self.assertIsNone(unfinished_total("How many crates are there?", "Twelve crates hold eighteen trays."))
+        # The doc states the total beside its parts.
+        self.assertIsNone(
+            unfinished_total("What was the combined count?", "West logged 47 and east 29, a combined 76.")
+        )
+
+    def test_passages_stating_an_absence_are_found_only_for_what_was_asked(self) -> None:
+        from uuid import uuid4
+
+        from agi_contracts import EvidenceReference
+        from agi_evaluation import stated_absence_evidence
+
+        def item(text: str) -> EvidenceReference:
+            return EvidenceReference(evidence_id=uuid4(), source_id="d", source_path="doc.txt", excerpt=text)
+
+        pay = item("The minutes do not contain individual salaries or personal pay grades.")
+        phones = item("Home telephone numbers are not published.")
+        plain = item("Tovan Mire is the Custody Controller.")
+        found = stated_absence_evidence("What personal pay grade was assigned to Tovan Mire?", [plain, phones, pay])
+        self.assertEqual(found, [pay])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,225 @@
+VEYRA SEED ARCHIVE
+ANNUAL OPERATIONS REPORT
+Reporting period: January 1 through December 31, 2025
+Document reference: VSA-OPS-25-R3
+Publication status: Final operational narrative
+Custodian: Custody Office
+
+
+ORGANIZATIONAL PURPOSE
+
+
+The Veyra Seed Archive preserves small collections of locally adapted plant seeds from the fictional Lethren Basin and its surrounding dry uplands. The Archive is not a commercial seed seller. Its central obligation is to retain viable reference material, document the movement of accession packets, and make limited research releases under controlled conditions.
+
+
+An accession packet is a sealed envelope containing a measured portion of one documented seed lot. A single lot may produce several accession packets. Counting packets is therefore not the same as counting distinct varieties, contributing gardens, or collection events. This distinction is repeated in training because readers of earlier operational summaries sometimes treated packet growth as evidence that the Archive had obtained an equivalent number of new varieties.
+
+
+The Archive's founding rules were adopted on 2024-03-07. The adoption occurred before the first monitored storage cycle. The founding rules established the Custody Office, assigned the responsibility for maintaining a written movement ledger, and prohibited informal exchanges from the reference inventory.
+
+
+The Archive operates two closely named storage rooms, Nera Room and Nerva Room. They are separate physical rooms, not alternate spellings of one location. They have different environmental targets, different responsible staff, and separate movement logs. The similarity between the names has caused indexing errors in the past. For that reason, employees must enter the full room name rather than an abbreviation when recording physical transfers.
+
+
+Nera Room is the primary working store. Nerva Room is the reserve store used for duplicate material and controlled trials. A third space, the Blue Alcove, keeps duplicate envelopes waiting for the next formal reconciliation. The Blue Alcove is a staging area, not a third accession store, and its contents must not be added to the permanent packet totals until the associated movement is posted.
+
+
+REPORTING METHOD
+
+
+The reporting year was divided into four operating quarters. Each quarter was reviewed independently, then the year-end figures were compiled. Activities could appear in more than one operational log, but the final accession count was based exclusively on sealed packets physically verified at year-end.
+
+
+The Lot Reconciliation Pass (LRP) was established to compare the physical envelopes with their ledger entries. The term is defined here for the first time in this reporting series. Later sections use LRP without repeating the expansion. Each pass is documented with a numbered worksheet, two initials, and a statement of any unresolved differences.
+
+
+The Archive also tracks temporary sleeves, which are protective holders used during inspection or public demonstrations. Temporary sleeves do not count as accession packets. They are cleaned, inspected, and reused whenever their condition permits. A torn sleeve can be replaced without changing the seed inventory.
+
+
+The records team used a common reporting cutoff of 17:00 on December 31. Entries received after that cutoff were assigned to the following year's reconciliation window, even if the physical activity began before the cutoff. No retroactive adjustment was made merely to improve the appearance of an annual total.
+
+
+YEAR-END INVENTORY
+
+
+The permanent working stores contained 14,235 sealed accession packets at the year-end cutoff. This is a physical packet count, not a financial value. It excludes temporary demonstration sleeves, unaccepted donations, and material being held for identification.
+
+
+The two principal rooms contributed their separately verified counts. A third classification, assigned to the remaining controlled collections, consisted of packets secured in the archive's off-floor cabinets. These cabinets have independent inventory identifiers and are neither part of Nera Room nor part of Nerva Room.
+
+
+TABLE 1. PHYSICAL STORAGE AND CONDITION SUMMARY
+
+
+Location              Sealed packets   Target RH   Lead custodian
+Nera Room                    4,810         41%      Elian Voss
+Nerva Room                   3,925         47%      Elia Voss
+Off-floor cabinets           5,500         43%      Rovan Pell
+TOTAL                       14,235          --      Custody Office
+
+
+Target RH refers to the relative humidity target for the location, not an observed annual average. Readings occasionally fall outside the target band. An out-of-band reading becomes a moisture flag only after the applicable verification rule has been satisfied.
+
+
+Nera Room completed its copper seal trial during the third quarter. The trial involved inspection of adhesive edges and repeated opening of empty demonstration envelopes. No accession packets were exposed to the trial adhesive. Nerva Room, by contrast, received the violet seal trial. The trials were deliberately separated so that employees could compare handling results without combining the room logs.
+
+
+Elian Voss was the lead custodian assigned to Nera Room throughout the reporting period. Elia Voss was the lead custodian assigned to Nerva Room. Their similar first and last names have been a persistent source of transcription errors. The office requires middle identifiers in its internal authorization system, but those identifiers are omitted from this public operational report.
+
+
+Physical inspections were performed on a fixed schedule and whenever a seal appeared compromised. The distinction between routine inspection and incident inspection matters because incident inspections can generate repeated checks of the same packet. Counts of inspection rounds should not be interpreted as counts of unique packets inspected.
+
+
+The spring monitoring period recorded 86 inspection rounds. The autumn monitoring period recorded 61 inspection rounds. These figures exclude unscheduled door checks and routine sensor calibration. No annual comparison of unique inspected packets is possible from those two figures alone.
+
+
+STORAGE CONDITIONS AND HANDLING
+
+
+The Archive measures relative humidity independently of temperature. Staff members read the room instruments before the first planned transfer of the day and again after the closing inventory review. A reading alone is not sufficient to establish a moisture flag unless it satisfies the escalation condition defined in the handbook.
+
+
+Equipment access was restricted during several maintenance periods. A technician could enter a storage room without moving accession packets, provided the entry was logged and a custodian remained present. Such visits were recorded in the maintenance log rather than the seed movement ledger.
+
+
+The central air-control enclosure required mainte
+nance of its intake screen during the second quarter. This word division reflects the line wrapping in the original maintenance transcription and does not indicate two separate activities. Technicians completed the work without opening either principal storage room.
+
+
+During the second half of the year, the Archive tested a practice called Quiet Shelf. Under Quiet Shelf, staff postpone nonessential movement during periods of repeated instrument instability. The practice is not a permanent shutdown. Scheduled safety checks continue, and a documented emergency release can proceed if the Custody Office authorizes it.
+
+
+Quiet Shelf was first applied to the off-floor cabinets during a short period of sensor disagreement. The decision prevented staff from moving materials between the cabinets and the Blue Alcove until the readings were independently checked. No packets were discarded as a direct result of that postponement.
+
+
+FIELD AND EDUCATION PROGRAMS
+
+
+The Archive conducted thirty-eight field workshops during the reporting year. A workshop could involve local seed collectors, volunteers, or invited trainees. Each workshop followed the same basic outline: identifying collection labels, demonstrating acceptable envelopes, explaining lot separation, and conducting a supervised ledger exercise.
+
+
+Workshop attendance was counted separately from workshop sessions. A person attending several sessions could therefore appear more than once in attendance records. The annual report intentionally does not describe workshop attendance as a count of unique people.
+
+
+The outreach team began the meadow trial in late autumn. The trial evaluated whether short instructional visits could replace certain longer classroom sessions. It did not involve planting accession material outside the Archive. The first sessions focused on label transcription and the handling of empty demonstration trays.
+
+
+The western field circuit logged 47 supervised visits, while the eastern field circuit logged 29. The two circuits were maintained as separate records because the eastern circuit used a restricted observation route that could not support large groups.
+
+
+During 2025, staff issued 760 temporary sleeves for demonstrations and handling exercises. During 2024, the corresponding issuance count was 615. These numbers refer to issuance events rather than purchases. A reused sleeve may have been issued more than once during the year.
+
+
+The outreach team's standard equipment cache contains twelve training crates. Each crate is configured to hold eighteen demonstration trays. A crate is considered ready only after its tray labels and transport latch have passed inspection. The configuration remains fixed even when a particular demonstration requires fewer trays.
+
+
+The Archive does not publish the precise collection coordinates of sensitive source sites in its operational summaries. The associated geographic records are kept outside the public reporting package. No location-level geographic dataset accompanies this report.
+
+
+TRANSPORT AND TRANSFER CONTROLS
+
+
+All seed transfers require an origin entry, a destination entry, and a custodian signature. Internal transfers are processed differently from external research releases, even when both activities involve the same number of packets.
+
+
+A ridge transfer is the controlled movement of material between a working store and a designated elevated holding area. The report identifies ridge transfers as a restricted movement class. Their authorization duration and review limit are governed by the staff and policy handbook rather than by an independent rule in this report.
+
+
+A temporary freeze on ridge transfers began on 2025-06-18. It followed an unexplained mismatch between two receiving labels. The freeze did not suspend ordinary room inspections or previously approved education sessions using empty demonstration material.
+
+
+The freeze was documented as a preventive action. The Archive did not conclude that any packet had been stolen or permanently lost. A frozen transfer remains pending until the appropriate reviewer releases it or cancels the request.
+
+
+The Grayglass exchange, an annual noncommercial information-sharing activity, was coordinated separately from physical seed transfers. Its primary purpose was to compare cataloging methods with small research groups. The exchange used demonstration records and did not authorize unrestricted release of living accession material.
+
+
+REVIEW ACTIVITIES
+
+
+The Thistle Cycle and Lantern Audit were internal review programs with different responsibilities. The Thistle Cycle examined whether old ledger entries could be traced to physical accession packets. The Lantern Audit examined whether authorization steps had been documented in the expected order.
+
+
+Neither program was a substitute for the LRP. A review might identify a discrepancy, but only the designated reconciliation process could close the inventory difference. The programs were allowed to recommend changes to procedures without directly editing an accepted inventory count.
+
+
+The Archive conducted a special review of its outbound release register after the third quarter. That review compared recorded release destinations, signature dates, and the colors used on the register tabs. The office continued using amber as the official ledger tab color after considering an alternative.
+
+
+The yellow register was a temporary draft created for the review. Its use was approved by Tovan Mire, who held the title of Custody Controller within the Custody Office. Approval to use a draft register did not make it the official ledger. The official register remained the amber-tabbed record.
+
+
+A recurring risk identified in the review concerned copied room names. In one exercise, trainees received a mock instruction referencing Nerva Room while the supporting form described Nera Room. The correct action was to stop processing and request clarification, rather than choose the more familiar spelling.
+
+
+QUARTERLY SUPPLY RECORDS
+
+
+The Archive used a separate consumables record to track repair labels, replacement sleeves, and inspection ties. These quantities are not included in packet totals.
+
+
+TABLE 2. CONSUMABLE ISSUANCE BY QUARTER
+
+
+Quarter       Repair labels   New sleeves   Inspection ties
+Q1                       52            96               31
+Q2                       68           104               35
+Q3                       74           111               39
+Q4                       63            88               33
+
+
+The repair-label figures indicate labels released from the supply cabinet. They do not establish the number of successful packet repairs. A label may be voided because of an incorrectly copied lot identifier, and a packet may receive more than one replacement label during its history.
+
+
+New sleeves refer only to unused sleeves entering service, whereas the annual issuance figures include reused sleeves. This difference was explained repeatedly to the inventory committee because the two counts were initially entered in adjacent spreadsheet columns.
+
+
+TIMELINE OF SELECTED EVENTS
+
+
+2024-03-07: The Archive adopted its founding rules and established the Custody Office.
+
+
+January 14, 2025: The year's first LRP worksheet was opened.
+
+
+7 Mar 2025: Nera Room completed a scheduled empty-envelope handling exercise.
+
+
+April 22, 2025: The outreach team approved the meadow-trial planning outline.
+
+
+2025-06-18: The temporary ridge-transfer freeze took effect.
+
+
+August 12, 2025: The copper seal trial in Nera Room reached its final inspection stage.
+
+
+September 3, 2025: The violet seal trial in Nerva Room was reviewed.
+
+
+October 17, 2025: The Archive conducted its public demonstration of ledger reconciliation.
+
+
+December 31, 2025: The year-end physical packet verification closed at 17:00.
+
+
+The timeline describes the dates on which activities were formally recorded. Preparatory work may have begun earlier. A timeline entry does not supersede the figures or decisions contained in the relevant final notices.
+
+
+CLOSING CONTROL STATEMENT
+
+
+The annual report distinguishes physical counts, operational activity, temporary materials, and committee decisions. These categories cannot be substituted for one another. The Archive considers a result final only after the relevant acceptance or correction procedure has been completed.
+
+
+The figures in this report remain subject to formally issued corrections in the meeting minutes and notices record. Where a later formal correction expressly replaces an earlier figure, the later figure governs. This rule applies even when the annual report was printed or circulated before the correction was approved.
+
+
+Salaries are not published in this report or in the associated public handbook and meeting notices. Individual pay grades are also withheld from the public document set. These omissions are intentional and should not be filled using assumptions about job titles, seniority, or assigned responsibilities.
+
+
+The Custody Office certifies that the narrative describes the recorded operational work for the reporting year. Certification does not authorize readers to infer financial costs, staff compensation, or unreported geographic details from the operating figures.
+
+
+End of annual operations report.
